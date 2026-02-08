@@ -79,6 +79,7 @@ export type AckCallback = (response: AckResponse) => void;
 
 export interface FileCreatedEvent {
   path: string;
+  content: string;
   hash: string;
   size: number;
   createdAt: string; // ISO timestamp
@@ -86,6 +87,7 @@ export interface FileCreatedEvent {
 
 export interface FileModifiedEvent {
   path: string;
+  content: string;
   hash: string;
   size: number;
   updatedAt: string; // ISO timestamp
@@ -99,6 +101,9 @@ export interface FileDeletedEvent {
 export interface FileRenamedEvent {
   oldPath: string;
   newPath: string;
+  content: string;
+  hash: string;
+  size: number;
   updatedAt: string; // ISO timestamp
 }
 

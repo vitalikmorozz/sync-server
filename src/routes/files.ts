@@ -100,11 +100,12 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
 
       const file = await createFileStrict(storeId, data);
 
-      // Broadcast to WebSocket clients
+      // Broadcast to WebSocket clients (with content)
       const io = getSocketServer();
       if (io) {
         broadcastToStore(io, storeId, "file-created", {
           path: file.path,
+          content: file.content,
           hash: file.hash,
           size: file.size,
           createdAt: file.createdAt.toISOString(),
@@ -133,12 +134,13 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
 
       const file = await updateFile(storeId, data.path, data.content);
 
-      // Broadcast to WebSocket clients
+      // Broadcast to WebSocket clients (with content)
       const io = getSocketServer();
       if (io) {
         if (file.created) {
           broadcastToStore(io, storeId, "file-created", {
             path: file.path,
+            content: file.content,
             hash: file.hash,
             size: file.size,
             createdAt: file.createdAt.toISOString(),
@@ -146,6 +148,7 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
         } else {
           broadcastToStore(io, storeId, "file-modified", {
             path: file.path,
+            content: file.content,
             hash: file.hash,
             size: file.size,
             updatedAt: file.updatedAt.toISOString(),
@@ -202,13 +205,14 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
 
       const file = await renameFile(storeId, data.path, data.newPath);
 
-      // Broadcast to WebSocket clients
+      // Broadcast to WebSocket clients (with content)
       const io = getSocketServer();
       if (io) {
         if (file.created) {
           // Source didn't exist, created new file at target
           broadcastToStore(io, storeId, "file-created", {
             path: file.path,
+            content: file.content,
             hash: file.hash,
             size: file.size,
             createdAt: file.createdAt.toISOString(),
@@ -218,6 +222,9 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
           broadcastToStore(io, storeId, "file-renamed", {
             oldPath: data.path,
             newPath: file.path,
+            content: file.content,
+            hash: file.hash,
+            size: file.size,
             updatedAt: file.updatedAt.toISOString(),
           });
         }

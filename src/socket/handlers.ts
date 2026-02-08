@@ -122,9 +122,10 @@ async function handleCreatedFile(
         "File created (new)",
       );
 
-      // Broadcast to other clients in the store room
+      // Broadcast to other clients in the store room (with content)
       socket.to(room).emit("file-created", {
         path: file.path,
+        content: file.content,
         hash: file.hash,
         size: file.size,
         createdAt: file.createdAt.toISOString(),
@@ -201,9 +202,10 @@ async function handleModifiedFile(
         "File created (did not exist)",
       );
 
-      // Broadcast file-created since it was a new file
+      // Broadcast file-created since it was a new file (with content)
       socket.to(room).emit("file-created", {
         path: file.path,
+        content: file.content,
         hash: file.hash,
         size: file.size,
         createdAt: file.createdAt.toISOString(),
@@ -219,9 +221,10 @@ async function handleModifiedFile(
         "File modified successfully",
       );
 
-      // Broadcast to other clients in the store room
+      // Broadcast to other clients in the store room (with content)
       socket.to(room).emit("file-modified", {
         path: file.path,
+        content: file.content,
         hash: file.hash,
         size: file.size,
         updatedAt: file.updatedAt.toISOString(),
@@ -366,9 +369,10 @@ async function handleRenamedFile(
         "Source not found, created new file at target path",
       );
 
-      // Broadcast file-created since source didn't exist
+      // Broadcast file-created since source didn't exist (with content)
       socket.to(room).emit("file-created", {
         path: file.path,
+        content: file.content,
         hash: file.hash,
         size: file.size,
         createdAt: file.createdAt.toISOString(),
@@ -384,10 +388,13 @@ async function handleRenamedFile(
         "File renamed successfully",
       );
 
-      // Broadcast to other clients in the store room
+      // Broadcast to other clients in the store room (with content)
       socket.to(room).emit("file-renamed", {
         oldPath,
         newPath: file.path,
+        content: file.content,
+        hash: file.hash,
+        size: file.size,
         updatedAt: file.updatedAt.toISOString(),
       });
 

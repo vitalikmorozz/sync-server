@@ -1,4 +1,5 @@
 import fastify from "fastify";
+import cors from "@fastify/cors";
 import { registerRoutes } from "./routes";
 import { ApiError } from "./errors";
 import { initializeSocket, type TypedServer } from "./socket";
@@ -8,6 +9,16 @@ const app = fastify({
   logger: {
     level: process.env.LOG_LEVEL || "info",
   },
+});
+
+// Register CORS - allow Obsidian app and configurable origins
+app.register(cors, {
+  origin: process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",")
+    : ["app://obsidian.md", "http://localhost:3000"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "X-API-Key"],
+  credentials: true,
 });
 
 // Socket.io server instance (initialized after app is ready)

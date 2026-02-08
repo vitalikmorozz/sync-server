@@ -20,6 +20,7 @@ export interface FileInfo {
  */
 export interface UpsertResult extends FileInfo {
   created: boolean;
+  content: string;
 }
 
 /**
@@ -34,6 +35,7 @@ export interface DeleteResult {
  */
 export interface RenameResult extends FileInfo {
   created: boolean;
+  content: string;
 }
 
 /**
@@ -191,7 +193,11 @@ export async function createFile(
   // Check if file already exists
   const existing = await getFile(storeId, path);
   if (existing) {
-    return { ...toFileInfo(existing), created: false };
+    return {
+      ...toFileInfo(existing),
+      content: existing.content,
+      created: false,
+    };
   }
 
   // Create with empty content
@@ -210,7 +216,7 @@ export async function createFile(
     })
     .returning();
 
-  return { ...toFileInfo(record), created: true };
+  return { ...toFileInfo(record), content, created: true };
 }
 
 /**
@@ -221,7 +227,7 @@ export async function createFile(
 export async function createFileStrict(
   storeId: string,
   data: { path: string; content: string },
-): Promise<FileInfo> {
+): Promise<FileWithContent> {
   // Check if file already exists
   const existing = await getFile(storeId, data.path);
   if (existing) {
@@ -242,7 +248,7 @@ export async function createFileStrict(
     })
     .returning();
 
-  return toFileInfo(record);
+  return { ...toFileInfo(record), content: data.content };
 }
 
 /**
@@ -270,7 +276,7 @@ export async function updateFile(
     .returning();
 
   if (result.length > 0) {
-    return { ...toFileInfo(result[0]), created: false };
+    return { ...toFileInfo(result[0]), content, created: false };
   }
 
   // File doesn't exist, create it
@@ -285,7 +291,7 @@ export async function updateFile(
     })
     .returning();
 
-  return { ...toFileInfo(record), created: true };
+  return { ...toFileInfo(record), content, created: true };
 }
 
 /**
@@ -339,7 +345,7 @@ export async function renameFile(
       })
       .returning();
 
-    return { ...toFileInfo(record), created: true };
+    return { ...toFileInfo(record), content, created: true };
   }
 
   // Delete any existing file at newPath (overwrite)
@@ -357,5 +363,9 @@ export async function renameFile(
     .where(and(eq(files.storeId, storeId), eq(files.path, oldPath)))
     .returning();
 
-  return { ...toFileInfo(result[0]), created: false };
+  return {
+    ...toFileInfo(result[0]),
+    content: existing.content,
+    created: false,
+  };
 }
