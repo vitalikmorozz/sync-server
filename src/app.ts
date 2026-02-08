@@ -1,56 +1,67 @@
 import fastify from "fastify";
-import { Server } from "socket.io";
+import { registerRoutes } from "./routes";
+import { ApiError } from "./errors";
+import { initializeSocket, type TypedServer } from "./socket";
 
-const app = fastify({ logger: true });
-const io = new Server(app.server, { cors: { origin: "*" } });
-
-app.get("/", async (_req, reply) => {
-  reply.send("Hello world");
+// Create Fastify instance
+const app = fastify({
+  logger: {
+    level: process.env.LOG_LEVEL || "info",
+  },
 });
 
-app.ready((err) => {
-  if (err) throw err;
+// Socket.io server instance (initialized after app is ready)
+let io: TypedServer;
 
-  io.on("connection", (socket) => {
-    socket.join("room"); // TODO: validate the api key and join the socket to the specific "store" room based on the API key passed in the socket.handshake.query.apiKey, otherwise refuse connection
-    console.info("Socket connected!", socket.id);
+// Global error handler for API errors
+app.setErrorHandler((error, request, reply) => {
+  if (error instanceof ApiError) {
+    request.log.warn({ err: error }, error.message);
+    return reply.status(error.statusCode).send(error.toJSON());
+  }
 
-    socket.on(
-      "created-file",
-      (payload: Record<string, any>, callback: Function) => {
-        console.log("Created file", payload);
-        callback("Success");
+  // Handle Fastify validation errors
+  if (error.validation) {
+    request.log.warn({ err: error }, "Validation error");
+    return reply.status(400).send({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request validation failed",
+        details: { errors: error.validation },
       },
-    );
-
-    socket.on(
-      "deleted-file",
-      (payload: Record<string, any>, callback: Function) => {
-        console.log("Deleted file", payload);
-        callback("Success");
-      },
-    );
-
-    socket.on(
-      "modified-file",
-      (payload: Record<string, any>, callback: Function) => {
-        console.log("Modified file", payload);
-        callback("Success");
-      },
-    );
-
-    socket.on(
-      "renamed-file",
-      (payload: Record<string, any>, callback: Function) => {
-        console.log("Renamed file", payload);
-        callback("Success");
-      },
-    );
-
-    socket.on("disconnect", () => {
-      console.log("Disconnected!", socket.id);
     });
+  }
+
+  // Log unexpected errors
+  request.log.error({ err: error }, "Unexpected error");
+  return reply.status(500).send({
+    error: {
+      code: "INTERNAL_ERROR",
+      message: "Internal server error",
+    },
   });
 });
 
+// Register all routes
+app.register(registerRoutes);
+
+// Initialize Socket.io after Fastify server is ready
+app.ready((err) => {
+  if (err) throw err;
+
+  // Initialize Socket.io with authentication and event handlers
+  io = initializeSocket(app.server);
+
+  app.log.info("Socket.io initialized with authentication");
+});
+
+/**
+ * Get the Socket.io server instance
+ * Use this to broadcast events from REST API handlers
+ */
+export function getSocketServer(): TypedServer {
+  return io;
+}
+
+export { app, io };
 export default app;
