@@ -310,6 +310,20 @@ export async function deleteFile(
 }
 
 /**
+ * Delete all files in a store
+ */
+export async function deleteAllFiles(
+  storeId: string,
+): Promise<{ count: number }> {
+  const result = await db
+    .delete(files)
+    .where(eq(files.storeId, storeId))
+    .returning({ id: files.id });
+
+  return { count: result.length };
+}
+
+/**
  * Rename/move a file
  * If oldPath doesn't exist, creates a new empty file at newPath
  * If newPath already exists, deletes it first (overwrite)

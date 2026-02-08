@@ -16,6 +16,7 @@ import {
   createFileStrict,
   updateFile,
   deleteFile,
+  deleteAllFiles,
   renameFile,
 } from "../services/files";
 import { getSocketServer } from "../app";
@@ -163,6 +164,23 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
         createdAt: file.createdAt.toISOString(),
         updatedAt: file.updatedAt.toISOString(),
       });
+    },
+  );
+
+  // ============================================
+  // DELETE /files/all - Delete all files in store
+  // ============================================
+  fastify.delete(
+    "/all",
+    { preHandler: requirePermission("write") },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { storeId } = request.auth!;
+
+      const { count } = await deleteAllFiles(storeId);
+
+      // No broadcast - this is a bulk operation, clients will resync
+
+      return reply.send({ deleted: count });
     },
   );
 
