@@ -24,6 +24,9 @@ RUN npm ci --omit=dev
 # Copy built files
 COPY --from=builder /app/dist ./dist
 
+# Copy migration files (needed for runtime migrations)
+COPY --from=builder /app/src/db/migrations ./dist/db/migrations
+
 # Copy static files if they exist
 COPY static ./static
 

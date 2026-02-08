@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  sync-server:
+    image: ghcr.io/vitalikmorozz/sync-server:latest
+    container_name: sync-server
+    ports:
+      - "${PORT:-3006}:3006"
+    environment:
+      - PORT=3006
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-syncuser}:${POSTGRES_PASSWORD:-syncpass}@postgres:5432/${POSTGRES_DB:-syncserver}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sync-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: sync-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-syncuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-syncpass}
+      - POSTGRES_DB=${POSTGRES_DB:-syncserver}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-syncuser} -d ${POSTGRES_DB:-syncserver}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sync-network
+
+volumes:
+  postgres_data:
+    name: sync-server-postgres-data
+
+networks:
+  sync-network:
+    name: sync-server-network

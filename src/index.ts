@@ -1,6 +1,8 @@
 import "dotenv/config";
+import path from "path";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import app from "./app";
-import { closeConnection } from "./db";
+import { db, closeConnection } from "./db";
 
 const PORT = Number(process.env.PORT) || 3006;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -22,10 +24,26 @@ async function shutdown(signal: string) {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-app.listen({ port: PORT, host: HOST }, (err, address) => {
-  if (err) {
-    console.error("Failed to start server:", err);
+async function start() {
+  // Run database migrations
+  console.log("Running database migrations...");
+  try {
+    const migrationsFolder = path.join(__dirname, "db/migrations");
+    await migrate(db, { migrationsFolder });
+    console.log("Database migrations completed successfully");
+  } catch (err) {
+    console.error("Failed to run database migrations:", err);
     process.exit(1);
   }
-  console.log(`Server running at ${address}`);
-});
+
+  // Start the server
+  app.listen({ port: PORT, host: HOST }, (err, address) => {
+    if (err) {
+      console.error("Failed to start server:", err);
+      process.exit(1);
+    }
+    console.log(`Server running at ${address}`);
+  });
+}
+
+start();
