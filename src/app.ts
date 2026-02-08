@@ -12,6 +12,7 @@ app.ready((err) => {
   if (err) throw err;
 
   io.on("connection", (socket) => {
+    socket.join("room"); // TODO: validate the api key and join the socket to the specific "store" room based on the API key passed in the socket.handshake.query.apiKey, otherwise refuse connection
     console.info("Socket connected!", socket.id);
 
     socket.on(
@@ -19,7 +20,7 @@ app.ready((err) => {
       (payload: Record<string, any>, callback: Function) => {
         console.log("Created file", payload);
         callback("Success");
-      }
+      },
     );
 
     socket.on(
@@ -27,7 +28,7 @@ app.ready((err) => {
       (payload: Record<string, any>, callback: Function) => {
         console.log("Deleted file", payload);
         callback("Success");
-      }
+      },
     );
 
     socket.on(
@@ -35,7 +36,7 @@ app.ready((err) => {
       (payload: Record<string, any>, callback: Function) => {
         console.log("Modified file", payload);
         callback("Success");
-      }
+      },
     );
 
     socket.on(
@@ -43,7 +44,7 @@ app.ready((err) => {
       (payload: Record<string, any>, callback: Function) => {
         console.log("Renamed file", payload);
         callback("Success");
-      }
+      },
     );
 
     socket.on("disconnect", () => {
