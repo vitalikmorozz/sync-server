@@ -56,12 +56,14 @@ export const createFileSchema = z.object({
 export type CreateFileInput = z.infer<typeof createFileSchema>;
 
 export const updateFileSchema = z.object({
+  path: filePathSchema,
   content: z.string().max(10 * 1024 * 1024, "Content must be 10MB or less"),
 });
 
 export type UpdateFileInput = z.infer<typeof updateFileSchema>;
 
 export const renameFileSchema = z.object({
+  path: filePathSchema,
   newPath: filePathSchema,
 });
 
@@ -78,6 +80,16 @@ export const listFilesQuerySchema = z.object({
 });
 
 export type ListFilesQuery = z.infer<typeof listFilesQuerySchema>;
+
+/**
+ * Query schema for endpoints that require a file path
+ * Used by GET, DELETE /files
+ */
+export const filePathQuerySchema = z.object({
+  path: filePathSchema,
+});
+
+export type FilePathQuery = z.infer<typeof filePathQuerySchema>;
 
 // ============================================================================
 // Validation Helper

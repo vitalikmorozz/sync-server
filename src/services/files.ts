@@ -1,6 +1,7 @@
 import crypto from "crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, like, count, asc } from "drizzle-orm";
 import { db, files, type File } from "../db";
+import { ConflictError, NotFoundError } from "../errors";
 
 /**
  * File info returned from operations
@@ -36,6 +37,23 @@ export interface RenameResult extends FileInfo {
 }
 
 /**
+ * File with content (for API responses)
+ */
+export interface FileWithContent extends FileInfo {
+  content: string;
+}
+
+/**
+ * Paginated list result
+ */
+export interface PaginatedFiles {
+  files: FileInfo[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
  * Convert DB record to FileInfo
  */
 function toFileInfo(record: File): FileInfo {
@@ -58,7 +76,7 @@ export function computeHash(content: string): string {
 }
 
 /**
- * List all files in a store
+ * List all files in a store (simple version for internal use)
  */
 export async function listFiles(storeId: string): Promise<FileInfo[]> {
   const fileList = await db.query.files.findMany({
@@ -70,7 +88,60 @@ export async function listFiles(storeId: string): Promise<FileInfo[]> {
 }
 
 /**
- * Get a file by path
+ * List files with pagination and optional path prefix filter
+ */
+export async function listFilesWithPagination(
+  storeId: string,
+  options: { pathPrefix?: string; limit: number; offset: number },
+): Promise<PaginatedFiles> {
+  const { pathPrefix, limit, offset } = options;
+
+  // Build where condition
+  const whereCondition = pathPrefix
+    ? and(eq(files.storeId, storeId), like(files.path, `${pathPrefix}%`))
+    : eq(files.storeId, storeId);
+
+  // Get total count
+  const [countResult] = await db
+    .select({ count: count() })
+    .from(files)
+    .where(whereCondition);
+
+  const total = countResult?.count ?? 0;
+
+  // Get paginated files (without content for efficiency)
+  const fileList = await db
+    .select({
+      id: files.id,
+      path: files.path,
+      hash: files.hash,
+      size: files.size,
+      createdAt: files.createdAt,
+      updatedAt: files.updatedAt,
+    })
+    .from(files)
+    .where(whereCondition)
+    .orderBy(asc(files.path))
+    .limit(limit)
+    .offset(offset);
+
+  return {
+    files: fileList.map((f) => ({
+      id: f.id,
+      path: f.path,
+      hash: f.hash,
+      size: f.size,
+      createdAt: f.createdAt,
+      updatedAt: f.updatedAt,
+    })),
+    total,
+    limit,
+    offset,
+  };
+}
+
+/**
+ * Get a file by path (internal use, returns full DB record)
  */
 export async function getFile(
   storeId: string,
@@ -84,8 +155,34 @@ export async function getFile(
 }
 
 /**
+ * Get a file with content (for API responses)
+ * Throws NotFoundError if file doesn't exist
+ */
+export async function getFileWithContent(
+  storeId: string,
+  path: string,
+): Promise<FileWithContent> {
+  const file = await getFile(storeId, path);
+
+  if (!file) {
+    throw new NotFoundError("File", path);
+  }
+
+  return {
+    id: file.id,
+    path: file.path,
+    content: file.content,
+    hash: file.hash,
+    size: file.size,
+    createdAt: file.createdAt,
+    updatedAt: file.updatedAt,
+  };
+}
+
+/**
  * Create/discover a file (upsert with empty content by default)
  * If file already exists, returns existing file info
+ * Used by WebSocket handlers for "discovery" mode
  */
 export async function createFile(
   storeId: string,
@@ -114,6 +211,38 @@ export async function createFile(
     .returning();
 
   return { ...toFileInfo(record), created: true };
+}
+
+/**
+ * Create a new file with content (strict mode)
+ * Throws ConflictError if file already exists
+ * Used by REST API POST endpoint
+ */
+export async function createFileStrict(
+  storeId: string,
+  data: { path: string; content: string },
+): Promise<FileInfo> {
+  // Check if file already exists
+  const existing = await getFile(storeId, data.path);
+  if (existing) {
+    throw new ConflictError(`File already exists: ${data.path}`);
+  }
+
+  const hash = computeHash(data.content);
+  const size = Buffer.byteLength(data.content, "utf8");
+
+  const [record] = await db
+    .insert(files)
+    .values({
+      storeId,
+      path: data.path,
+      content: data.content,
+      hash,
+      size,
+    })
+    .returning();
+
+  return toFileInfo(record);
 }
 
 /**
