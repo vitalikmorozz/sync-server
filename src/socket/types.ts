@@ -1,18 +1,12 @@
 import type { Server, Socket } from "socket.io";
 import type { Permission } from "../db/schema";
 
-/**
- * Socket data stored after authentication
- */
 export interface SocketData {
   storeId: string;
   permissions: Permission[];
   keyId: string;
 }
 
-/**
- * Typed Socket.io socket with custom data
- */
 export type AuthenticatedSocket = Socket<
   ClientToServerEvents,
   ServerToClientEvents,
@@ -20,19 +14,12 @@ export type AuthenticatedSocket = Socket<
   SocketData
 >;
 
-/**
- * Typed Socket.io server
- */
 export type TypedServer = Server<
   ClientToServerEvents,
   ServerToClientEvents,
   Record<string, never>,
   SocketData
 >;
-
-// ============================================
-// Client -> Server Event Payloads
-// ============================================
 
 export interface CreatedFilePayload {
   path: string;
@@ -52,10 +39,6 @@ export interface RenamedFilePayload {
   newPath: string;
 }
 
-// ============================================
-// Acknowledgment Responses
-// ============================================
-
 export interface SuccessResponse {
   success: true;
   hash?: string;
@@ -72,10 +55,6 @@ export interface ErrorResponse {
 export type AckResponse = SuccessResponse | ErrorResponse;
 
 export type AckCallback = (response: AckResponse) => void;
-
-// ============================================
-// Server -> Client Event Payloads
-// ============================================
 
 export interface FileCreatedEvent {
   path: string;
@@ -106,10 +85,6 @@ export interface FileRenamedEvent {
   size: number;
   updatedAt: string; // ISO timestamp
 }
-
-// ============================================
-// Event Maps for Socket.io Typing
-// ============================================
 
 export interface ClientToServerEvents {
   "created-file": (payload: CreatedFilePayload, callback: AckCallback) => void;

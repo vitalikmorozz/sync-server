@@ -3,9 +3,6 @@ import { eq, and, like, count, asc } from "drizzle-orm";
 import { db, files, type File } from "../db";
 import { ConflictError, NotFoundError } from "../errors";
 
-/**
- * File info returned from operations
- */
 export interface FileInfo {
   id: string;
   path: string;
@@ -15,39 +12,24 @@ export interface FileInfo {
   updatedAt: Date;
 }
 
-/**
- * Result of an upsert operation
- */
 export interface UpsertResult extends FileInfo {
   created: boolean;
   content: string;
 }
 
-/**
- * Result of a delete operation
- */
 export interface DeleteResult {
   deleted: boolean;
 }
 
-/**
- * Result of a rename operation
- */
 export interface RenameResult extends FileInfo {
   created: boolean;
   content: string;
 }
 
-/**
- * File with content (for API responses)
- */
 export interface FileWithContent extends FileInfo {
   content: string;
 }
 
-/**
- * Paginated list result
- */
 export interface PaginatedFiles {
   files: FileInfo[];
   total: number;
@@ -55,9 +37,6 @@ export interface PaginatedFiles {
   offset: number;
 }
 
-/**
- * Convert DB record to FileInfo
- */
 function toFileInfo(record: File): FileInfo {
   return {
     id: record.id,
@@ -69,17 +48,11 @@ function toFileInfo(record: File): FileInfo {
   };
 }
 
-/**
- * Compute SHA-256 hash of content
- */
 export function computeHash(content: string): string {
   const hash = crypto.createHash("sha256").update(content).digest("hex");
   return `sha256:${hash}`;
 }
 
-/**
- * List all files in a store (simple version for internal use)
- */
 export async function listFiles(storeId: string): Promise<FileInfo[]> {
   const fileList = await db.query.files.findMany({
     where: eq(files.storeId, storeId),
@@ -89,21 +62,16 @@ export async function listFiles(storeId: string): Promise<FileInfo[]> {
   return fileList.map(toFileInfo);
 }
 
-/**
- * List files with pagination and optional path prefix filter
- */
 export async function listFilesWithPagination(
   storeId: string,
   options: { pathPrefix?: string; limit: number; offset: number },
 ): Promise<PaginatedFiles> {
   const { pathPrefix, limit, offset } = options;
 
-  // Build where condition
   const whereCondition = pathPrefix
     ? and(eq(files.storeId, storeId), like(files.path, `${pathPrefix}%`))
     : eq(files.storeId, storeId);
 
-  // Get total count
   const [countResult] = await db
     .select({ count: count() })
     .from(files)
@@ -111,7 +79,6 @@ export async function listFilesWithPagination(
 
   const total = countResult?.count ?? 0;
 
-  // Get paginated files (without content for efficiency)
   const fileList = await db
     .select({
       id: files.id,
@@ -142,9 +109,6 @@ export async function listFilesWithPagination(
   };
 }
 
-/**
- * Get a file by path (internal use, returns full DB record)
- */
 export async function getFile(
   storeId: string,
   path: string,
@@ -156,10 +120,6 @@ export async function getFile(
   return file ?? null;
 }
 
-/**
- * Get a file with content (for API responses)
- * Throws NotFoundError if file doesn't exist
- */
 export async function getFileWithContent(
   storeId: string,
   path: string,
@@ -181,16 +141,10 @@ export async function getFileWithContent(
   };
 }
 
-/**
- * Create/discover a file (upsert with empty content by default)
- * If file already exists, returns existing file info
- * Used by WebSocket handlers for "discovery" mode
- */
 export async function createFile(
   storeId: string,
   path: string,
 ): Promise<UpsertResult> {
-  // Check if file already exists
   const existing = await getFile(storeId, path);
   if (existing) {
     return {
@@ -200,7 +154,6 @@ export async function createFile(
     };
   }
 
-  // Create with empty content
   const content = "";
   const hash = computeHash(content);
   const size = 0;
@@ -219,16 +172,10 @@ export async function createFile(
   return { ...toFileInfo(record), content, created: true };
 }
 
-/**
- * Create a new file with content (strict mode)
- * Throws ConflictError if file already exists
- * Used by REST API POST endpoint
- */
 export async function createFileStrict(
   storeId: string,
   data: { path: string; content: string },
 ): Promise<FileWithContent> {
-  // Check if file already exists
   const existing = await getFile(storeId, data.path);
   if (existing) {
     throw new ConflictError(`File already exists: ${data.path}`);
@@ -251,9 +198,6 @@ export async function createFileStrict(
   return { ...toFileInfo(record), content: data.content };
 }
 
-/**
- * Update (modify) a file's content, or create it if it doesn't exist
- */
 export async function updateFile(
   storeId: string,
   path: string,
@@ -263,7 +207,6 @@ export async function updateFile(
   const size = Buffer.byteLength(content, "utf8");
   const now = new Date();
 
-  // Try to update first
   const result = await db
     .update(files)
     .set({
@@ -279,7 +222,6 @@ export async function updateFile(
     return { ...toFileInfo(result[0]), content, created: false };
   }
 
-  // File doesn't exist, create it
   const [record] = await db
     .insert(files)
     .values({
@@ -294,9 +236,6 @@ export async function updateFile(
   return { ...toFileInfo(record), content, created: true };
 }
 
-/**
- * Delete a file (ignores if file doesn't exist)
- */
 export async function deleteFile(
   storeId: string,
   path: string,
@@ -309,9 +248,6 @@ export async function deleteFile(
   return { deleted: result.length > 0 };
 }
 
-/**
- * Delete all files in a store
- */
 export async function deleteAllFiles(
   storeId: string,
 ): Promise<{ count: number }> {
@@ -323,24 +259,15 @@ export async function deleteAllFiles(
   return { count: result.length };
 }
 
-/**
- * Rename/move a file
- * If oldPath doesn't exist, creates a new empty file at newPath
- * If newPath already exists, deletes it first (overwrite)
- */
 export async function renameFile(
   storeId: string,
   oldPath: string,
   newPath: string,
 ): Promise<RenameResult> {
   const now = new Date();
-
-  // Check if old path exists
   const existing = await getFile(storeId, oldPath);
 
   if (!existing) {
-    // Old file doesn't exist, create new empty file at newPath
-    // First delete any existing file at newPath
     await db
       .delete(files)
       .where(and(eq(files.storeId, storeId), eq(files.path, newPath)));
@@ -362,12 +289,10 @@ export async function renameFile(
     return { ...toFileInfo(record), content, created: true };
   }
 
-  // Delete any existing file at newPath (overwrite)
   await db
     .delete(files)
     .where(and(eq(files.storeId, storeId), eq(files.path, newPath)));
 
-  // Rename the existing file
   const result = await db
     .update(files)
     .set({

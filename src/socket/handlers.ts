@@ -18,10 +18,6 @@ import type {
   RenamedFilePayload,
 } from "./types";
 
-// ============================================
-// Validation Schemas
-// ============================================
-
 const pathSchema = z
   .string()
   .min(1, "Path is required")
@@ -32,7 +28,6 @@ const contentSchema = z
   .string()
   .max(10 * 1024 * 1024, "Content too large (max 10MB)");
 
-// created-file only requires path (content defaults to empty)
 const createdFileSchema = z.object({
   path: pathSchema,
 });
@@ -51,10 +46,6 @@ const renamedFileSchema = z.object({
   newPath: pathSchema,
 });
 
-// ============================================
-// Error Response Helpers
-// ============================================
-
 function errorResponse(code: string, message: string): AckResponse {
   return {
     success: false,
@@ -70,14 +61,6 @@ function validationError(message: string): AckResponse {
   return errorResponse("VALIDATION_ERROR", message);
 }
 
-// ============================================
-// Event Handlers
-// ============================================
-
-/**
- * Handle created-file event
- * Discovers/creates a file with empty content (idempotent)
- */
 async function handleCreatedFile(
   socket: AuthenticatedSocket,
   _io: TypedServer,
@@ -86,16 +69,14 @@ async function handleCreatedFile(
 ): Promise<void> {
   const log = createSocketLogger(socket.id, socket.data.storeId);
 
-  // Check write permission
   if (!hasPermission(socket, "write")) {
     log.warn(
       { event: "created-file", path: payload.path },
-      "Permission denied: write required",
+      "Permission denied",
     );
     return callback(forbiddenResponse());
   }
 
-  // Validate payload
   const result = createdFileSchema.safeParse(payload);
   if (!result.success) {
     const message = result.error.issues[0]?.message ?? "Invalid payload";
@@ -111,18 +92,16 @@ async function handleCreatedFile(
     const storeId = socket.data.storeId;
     const room = getStoreRoom(storeId);
 
-    log.info({ event: "created-file", path }, "Discovering/creating file");
+    log.info({ event: "created-file", path }, "Creating file");
 
-    // Create the file (returns existing if already exists)
     const file = await createFile(storeId, path);
 
     if (file.created) {
       log.info(
         { event: "created-file", path, hash: file.hash },
-        "File created (new)",
+        "File created",
       );
 
-      // Broadcast to other clients in the store room (with content)
       socket.to(room).emit("file-created", {
         path: file.path,
         content: file.content,
@@ -131,18 +110,14 @@ async function handleCreatedFile(
         createdAt: file.createdAt.toISOString(),
       });
 
-      log.debug(
-        { event: "file-created", path, room },
-        "Broadcast sent to room",
-      );
+      log.debug({ event: "file-created", path, room }, "Broadcast sent");
     } else {
       log.info(
         { event: "created-file", path, hash: file.hash },
-        "File already exists (no-op)",
+        "File already exists",
       );
     }
 
-    // Send success response to caller
     callback({ success: true, hash: file.hash });
   } catch (error) {
     log.error(
@@ -153,10 +128,6 @@ async function handleCreatedFile(
   }
 }
 
-/**
- * Handle modified-file event
- * Updates file content, creates if doesn't exist
- */
 async function handleModifiedFile(
   socket: AuthenticatedSocket,
   _io: TypedServer,
@@ -165,16 +136,14 @@ async function handleModifiedFile(
 ): Promise<void> {
   const log = createSocketLogger(socket.id, socket.data.storeId);
 
-  // Check write permission
   if (!hasPermission(socket, "write")) {
     log.warn(
       { event: "modified-file", path: payload.path },
-      "Permission denied: write required",
+      "Permission denied",
     );
     return callback(forbiddenResponse());
   }
 
-  // Validate payload
   const result = modifiedFileSchema.safeParse(payload);
   if (!result.success) {
     const message = result.error.issues[0]?.message ?? "Invalid payload";
@@ -193,16 +162,14 @@ async function handleModifiedFile(
 
     log.info({ event: "modified-file", path, contentSize }, "Modifying file");
 
-    // Update the file (creates if doesn't exist)
     const file = await updateFile(storeId, path, content);
 
     if (file.created) {
       log.info(
         { event: "modified-file", path, hash: file.hash, size: file.size },
-        "File created (did not exist)",
+        "File created",
       );
 
-      // Broadcast file-created since it was a new file (with content)
       socket.to(room).emit("file-created", {
         path: file.path,
         content: file.content,
@@ -211,17 +178,13 @@ async function handleModifiedFile(
         createdAt: file.createdAt.toISOString(),
       });
 
-      log.debug(
-        { event: "file-created", path, room },
-        "Broadcast sent to room",
-      );
+      log.debug({ event: "file-created", path, room }, "Broadcast sent");
     } else {
       log.info(
         { event: "modified-file", path, hash: file.hash, size: file.size },
-        "File modified successfully",
+        "File modified",
       );
 
-      // Broadcast to other clients in the store room (with content)
       socket.to(room).emit("file-modified", {
         path: file.path,
         content: file.content,
@@ -230,13 +193,9 @@ async function handleModifiedFile(
         updatedAt: file.updatedAt.toISOString(),
       });
 
-      log.debug(
-        { event: "file-modified", path, room },
-        "Broadcast sent to room",
-      );
+      log.debug({ event: "file-modified", path, room }, "Broadcast sent");
     }
 
-    // Send success response to caller
     callback({ success: true, hash: file.hash });
   } catch (error) {
     log.error(
@@ -247,10 +206,6 @@ async function handleModifiedFile(
   }
 }
 
-/**
- * Handle deleted-file event
- * Deletes a file, ignores if file doesn't exist
- */
 async function handleDeletedFile(
   socket: AuthenticatedSocket,
   _io: TypedServer,
@@ -259,16 +214,14 @@ async function handleDeletedFile(
 ): Promise<void> {
   const log = createSocketLogger(socket.id, socket.data.storeId);
 
-  // Check write permission
   if (!hasPermission(socket, "write")) {
     log.warn(
       { event: "deleted-file", path: payload.path },
-      "Permission denied: write required",
+      "Permission denied",
     );
     return callback(forbiddenResponse());
   }
 
-  // Validate payload
   const result = deletedFileSchema.safeParse(payload);
   if (!result.success) {
     const message = result.error.issues[0]?.message ?? "Invalid payload";
@@ -286,27 +239,21 @@ async function handleDeletedFile(
 
     log.info({ event: "deleted-file", path }, "Deleting file");
 
-    // Delete the file (returns whether it was actually deleted)
     const { deleted } = await deleteFile(storeId, path);
 
     if (deleted) {
-      log.info({ event: "deleted-file", path }, "File deleted successfully");
+      log.info({ event: "deleted-file", path }, "File deleted");
 
-      // Broadcast to other clients in the store room
       socket.to(room).emit("file-deleted", {
         path,
         deletedAt: new Date().toISOString(),
       });
 
-      log.debug(
-        { event: "file-deleted", path, room },
-        "Broadcast sent to room",
-      );
+      log.debug({ event: "file-deleted", path, room }, "Broadcast sent");
     } else {
-      log.info({ event: "deleted-file", path }, "File not found (ignored)");
+      log.info({ event: "deleted-file", path }, "File not found");
     }
 
-    // Send success response to caller
     callback({ success: true });
   } catch (error) {
     log.error(
@@ -317,10 +264,6 @@ async function handleDeletedFile(
   }
 }
 
-/**
- * Handle renamed-file event
- * Renames/moves a file, creates new file if source doesn't exist
- */
 async function handleRenamedFile(
   socket: AuthenticatedSocket,
   _io: TypedServer,
@@ -329,7 +272,6 @@ async function handleRenamedFile(
 ): Promise<void> {
   const log = createSocketLogger(socket.id, socket.data.storeId);
 
-  // Check write permission
   if (!hasPermission(socket, "write")) {
     log.warn(
       {
@@ -337,12 +279,11 @@ async function handleRenamedFile(
         oldPath: payload.oldPath,
         newPath: payload.newPath,
       },
-      "Permission denied: write required",
+      "Permission denied",
     );
     return callback(forbiddenResponse());
   }
 
-  // Validate payload
   const result = renamedFileSchema.safeParse(payload);
   if (!result.success) {
     const message = result.error.issues[0]?.message ?? "Invalid payload";
@@ -360,16 +301,14 @@ async function handleRenamedFile(
 
     log.info({ event: "renamed-file", oldPath, newPath }, "Renaming file");
 
-    // Rename the file (creates at newPath if oldPath doesn't exist)
     const file = await renameFile(storeId, oldPath, newPath);
 
     if (file.created) {
       log.info(
         { event: "renamed-file", oldPath, newPath },
-        "Source not found, created new file at target path",
+        "Source not found, created at target",
       );
 
-      // Broadcast file-created since source didn't exist (with content)
       socket.to(room).emit("file-created", {
         path: file.path,
         content: file.content,
@@ -380,15 +319,11 @@ async function handleRenamedFile(
 
       log.debug(
         { event: "file-created", path: newPath, room },
-        "Broadcast sent to room",
+        "Broadcast sent",
       );
     } else {
-      log.info(
-        { event: "renamed-file", oldPath, newPath },
-        "File renamed successfully",
-      );
+      log.info({ event: "renamed-file", oldPath, newPath }, "File renamed");
 
-      // Broadcast to other clients in the store room (with content)
       socket.to(room).emit("file-renamed", {
         oldPath,
         newPath: file.path,
@@ -400,11 +335,10 @@ async function handleRenamedFile(
 
       log.debug(
         { event: "file-renamed", oldPath, newPath, room },
-        "Broadcast sent to room",
+        "Broadcast sent",
       );
     }
 
-    // Send success response to caller
     callback({ success: true });
   } catch (error) {
     log.error(
@@ -420,13 +354,6 @@ async function handleRenamedFile(
   }
 }
 
-// ============================================
-// Register Event Handlers
-// ============================================
-
-/**
- * Register all event handlers for a connected socket
- */
 export function registerSocketHandlers(
   socket: AuthenticatedSocket,
   io: TypedServer,
@@ -434,10 +361,7 @@ export function registerSocketHandlers(
   const storeId = socket.data.storeId;
   const log = createSocketLogger(socket.id, storeId);
 
-  log.info(
-    { permissions: socket.data.permissions },
-    "Socket connected, registering event handlers",
-  );
+  log.info({ permissions: socket.data.permissions }, "Socket connected");
 
   socket.on("created-file", (payload, callback) => {
     handleCreatedFile(socket, io, payload, callback);
