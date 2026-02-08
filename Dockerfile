@@ -27,9 +27,6 @@ COPY --from=builder /app/dist ./dist
 # Copy migration files (needed for runtime migrations)
 COPY --from=builder /app/src/db/migrations ./dist/db/migrations
 
-# Copy static files if they exist
-COPY static ./static
-
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
