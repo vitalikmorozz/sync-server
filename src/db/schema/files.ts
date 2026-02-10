@@ -8,6 +8,9 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+/** Tombstone TTL: 30 days in milliseconds */
+export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 import { stores } from "./stores";
 
 /**
@@ -35,6 +38,8 @@ export const files = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // Soft-delete TTL: null = active file, non-null = tombstone that expires at this time
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => ({
     // Unique constraint: each path is unique per store
@@ -44,6 +49,8 @@ export const files = pgTable(
     ),
     // Index for listing files in a store
     storeIdIdx: index("files_store_id_idx").on(table.storeId),
+    // Index for efficient tombstone cleanup
+    expiresAtIdx: index("files_expires_at_idx").on(table.expiresAt),
   }),
 );
 

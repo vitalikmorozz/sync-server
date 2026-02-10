@@ -55,6 +55,7 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
         pathPrefix: listQuery.path,
         limit: listQuery.limit,
         offset: listQuery.offset,
+        includeDeleted: listQuery.include_deleted,
       });
 
       return reply.send({
@@ -64,6 +65,7 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
           size: f.size,
           createdAt: f.createdAt.toISOString(),
           updatedAt: f.updatedAt.toISOString(),
+          ...(f.expiresAt ? { expiresAt: f.expiresAt.toISOString() } : {}),
         })),
         total: result.total,
         limit: result.limit,
