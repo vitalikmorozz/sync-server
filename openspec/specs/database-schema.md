@@ -2,288 +2,113 @@
 
 ## Overview
 
-The database layer uses Drizzle ORM with PostgreSQL as the primary database. The schema is designed to be simple and support easy migration to other databases (SQLite, MySQL) if needed.
+PostgreSQL 15+ with Drizzle ORM. Three tables, one custom enum type, and automatic migrations on server startup.
 
 ## Tables
 
 ### stores
 
-Stores represent isolated file namespaces (e.g., Obsidian vaults).
+Isolated file namespaces, each mapping to one Obsidian vault.
 
-```typescript
-// src/db/schema/stores.ts
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+| Column       | Type                | Nullable | Default             | Description         |
+| ------------ | ------------------- | -------- | ------------------- | ------------------- |
+| `id`         | `uuid`              | NOT NULL | `gen_random_uuid()` | Primary key         |
+| `name`       | `text`              | NOT NULL | —                   | Human-readable name |
+| `created_at` | `timestamp with tz` | NOT NULL | `now()`             | Creation time       |
+| `updated_at` | `timestamp with tz` | NOT NULL | `now()`             | Last modification   |
 
-export const stores = pgTable("stores", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-```
-
-| Column     | Type      | Description                 |
-| ---------- | --------- | --------------------------- |
-| id         | UUID      | Primary key, auto-generated |
-| name       | TEXT      | Human-readable store name   |
-| created_at | TIMESTAMP | Creation timestamp          |
-| updated_at | TIMESTAMP | Last modification timestamp |
-
----
+**Relations**: Has many `api_keys`, has many `files`. Deleting a store cascades to all its keys and files.
 
 ### api_keys
 
-API keys for authenticating client requests.
+Authentication keys scoped to a single store.
 
-```typescript
-// src/db/schema/apiKeys.ts
-import {
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-  varchar,
-  pgEnum,
-} from "drizzle-orm/pg-core";
-import { stores } from "./stores";
+| Column         | Type                | Nullable | Default             | Description                    |
+| -------------- | ------------------- | -------- | ------------------- | ------------------------------ |
+| `id`           | `uuid`              | NOT NULL | `gen_random_uuid()` | Primary key                    |
+| `store_id`     | `uuid`              | NOT NULL | —                   | FK -> `stores.id` (CASCADE)    |
+| `name`         | `text`              | NOT NULL | —                   | Human-readable key name        |
+| `key_hash`     | `varchar(64)`       | NOT NULL | —                   | SHA-256 hex hash of full key   |
+| `key_prefix`   | `varchar(20)`       | NOT NULL | —                   | First 16 chars for display     |
+| `permissions`  | `permission[]`      | NOT NULL | —                   | Array of `'read'` / `'write'`  |
+| `created_at`   | `timestamp with tz` | NOT NULL | `now()`             | Creation time                  |
+| `last_used_at` | `timestamp with tz` | NULL     | —                   | Updated on each authentication |
+| `revoked_at`   | `timestamp with tz` | NULL     | —                   | Non-null = key is revoked      |
 
-export const permissionEnum = pgEnum("permission", ["read", "write"]);
+**Indexes**: `api_keys_key_hash_idx` — UNIQUE btree on `key_hash`.
 
-export const apiKeys = pgTable("api_keys", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  storeId: uuid("store_id")
-    .notNull()
-    .references(() => stores.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  keyHash: varchar("key_hash", { length: 64 }).notNull().unique(),
-  keyPrefix: varchar("key_prefix", { length: 20 }).notNull(),
-  permissions: permissionEnum("permissions").array().notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-});
+The `permission` enum is defined as:
+
+```sql
+CREATE TYPE "public"."permission" AS ENUM('read', 'write');
 ```
-
-| Column       | Type        | Description                           |
-| ------------ | ----------- | ------------------------------------- |
-| id           | UUID        | Primary key                           |
-| store_id     | UUID        | Foreign key to stores                 |
-| name         | TEXT        | Human-readable key name               |
-| key_hash     | VARCHAR(64) | SHA-256 hash of the full key          |
-| key_prefix   | VARCHAR(20) | First chars of key for identification |
-| permissions  | ENUM[]      | Array of permissions (read, write)    |
-| created_at   | TIMESTAMP   | Creation timestamp                    |
-| last_used_at | TIMESTAMP   | Last usage timestamp                  |
-| revoked_at   | TIMESTAMP   | Revocation timestamp (null if active) |
-
-**Note:** The full API key is never stored. Only the hash is kept for validation.
-
----
 
 ### files
 
-Files stored in each store.
+Files stored in each store, with soft-delete support via `expires_at`.
 
-```typescript
-// src/db/schema/files.ts
-import {
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-  integer,
-  varchar,
-  index,
-} from "drizzle-orm/pg-core";
-import { stores } from "./stores";
+| Column       | Type                | Nullable | Default             | Description                         |
+| ------------ | ------------------- | -------- | ------------------- | ----------------------------------- |
+| `id`         | `uuid`              | NOT NULL | `gen_random_uuid()` | Primary key                         |
+| `store_id`   | `uuid`              | NOT NULL | —                   | FK -> `stores.id` (CASCADE)         |
+| `path`       | `text`              | NOT NULL | —                   | Relative file path within the store |
+| `content`    | `text`              | NOT NULL | —                   | File contents (text)                |
+| `hash`       | `varchar(71)`       | NOT NULL | —                   | `sha256:{64-char hex}` (71 chars)   |
+| `size`       | `integer`           | NOT NULL | —                   | Size in bytes                       |
+| `created_at` | `timestamp with tz` | NOT NULL | `now()`             | Creation time                       |
+| `updated_at` | `timestamp with tz` | NOT NULL | `now()`             | Last modification time              |
+| `expires_at` | `timestamp with tz` | NULL     | —                   | Tombstone expiry (null = active)    |
 
-export const files = pgTable(
-  "files",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    storeId: uuid("store_id")
-      .notNull()
-      .references(() => stores.id, { onDelete: "cascade" }),
-    path: text("path").notNull(),
-    content: text("content").notNull(),
-    hash: varchar("hash", { length: 71 }).notNull(), // "sha256:" + 64 hex chars
-    size: integer("size").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => ({
-    storePathIdx: index("files_store_path_idx").on(table.storeId, table.path),
-    storeIdIdx: index("files_store_id_idx").on(table.storeId),
-  }),
-);
-```
+**Indexes**:
 
-| Column     | Type        | Description                     |
-| ---------- | ----------- | ------------------------------- |
-| id         | UUID        | Primary key                     |
-| store_id   | UUID        | Foreign key to stores           |
-| path       | TEXT        | Relative file path within store |
-| content    | TEXT        | File contents (text or base64)  |
-| hash       | VARCHAR(71) | Content hash (sha256:xxxx...)   |
-| size       | INTEGER     | File size in bytes              |
-| created_at | TIMESTAMP   | Creation timestamp              |
-| updated_at | TIMESTAMP   | Last modification timestamp     |
+| Index Name                    | Columns            | Type         | Purpose                     |
+| ----------------------------- | ------------------ | ------------ | --------------------------- |
+| `files_store_path_unique_idx` | `(store_id, path)` | UNIQUE btree | One file per path per store |
+| `files_store_id_idx`          | `(store_id)`       | btree        | List files in a store       |
+| `files_expires_at_idx`        | `(expires_at)`     | btree        | Efficient tombstone cleanup |
 
-**Unique Constraint:** `(store_id, path)` - each path is unique per store.
+## Soft Delete Mechanics
 
----
+When a file is deleted:
 
-## Entity Relationship Diagram
+1. `content` is set to `""` (frees storage)
+2. `hash` is set to `sha256:{hash of empty string}`
+3. `size` is set to `0`
+4. `expires_at` is set to `now() + 30 days`
+5. `updated_at` is set to `now()`
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         stores                              │
-├─────────────────────────────────────────────────────────────┤
-│ id (PK)          │ UUID                                     │
-│ name             │ TEXT                                     │
-│ created_at       │ TIMESTAMP                                │
-│ updated_at       │ TIMESTAMP                                │
-└─────────────────────────────────────────────────────────────┘
-           │                              │
-           │ 1:N                          │ 1:N
-           ▼                              ▼
-┌─────────────────────────────┐  ┌─────────────────────────────┐
-│        api_keys             │  │          files              │
-├─────────────────────────────┤  ├─────────────────────────────┤
-│ id (PK)        │ UUID       │  │ id (PK)        │ UUID       │
-│ store_id (FK)  │ UUID       │  │ store_id (FK)  │ UUID       │
-│ name           │ TEXT       │  │ path           │ TEXT       │
-│ key_hash       │ VARCHAR    │  │ content        │ TEXT       │
-│ key_prefix     │ VARCHAR    │  │ hash           │ VARCHAR    │
-│ permissions    │ ENUM[]     │  │ size           │ INTEGER    │
-│ created_at     │ TIMESTAMP  │  │ created_at     │ TIMESTAMP  │
-│ last_used_at   │ TIMESTAMP  │  │ updated_at     │ TIMESTAMP  │
-│ revoked_at     │ TIMESTAMP  │  │                │            │
-└─────────────────────────────┘  └─────────────────────────────┘
+The row remains in the database as a **tombstone** until `expires_at` passes.
 
-                                 UNIQUE(store_id, path)
-```
+### Tombstone Resurrection
 
----
+When a file is created or updated at a path that has a tombstone:
 
-## Indexes
+- The existing row is reused (same UUID)
+- `expires_at` is cleared to `null`
+- `content`, `hash`, `size`, `updated_at` are updated with new values
+- This avoids violating the `(store_id, path)` unique constraint
 
-| Index Name              | Table    | Columns          | Purpose                                   |
-| ----------------------- | -------- | ---------------- | ----------------------------------------- |
-| `files_store_path_idx`  | files    | (store_id, path) | Fast file lookup by path                  |
-| `files_store_id_idx`    | files    | (store_id)       | List files in store                       |
-| `api_keys_key_hash_idx` | api_keys | (key_hash)       | Fast key validation (implicit via unique) |
+### Lazy Cleanup
 
----
+Expired tombstones (`expires_at < now()`) are permanently deleted during file listing operations. The cleanup runs as a fire-and-forget query — it does not block the response.
 
 ## Migrations
 
-Drizzle generates migrations automatically. Structure:
+Managed by Drizzle Kit. Migration files are stored in `src/db/migrations/` and consist of SQL files plus a `meta/_journal.json` tracking applied migrations.
 
-```
-src/db/
-├── schema/
-│   ├── index.ts          # Export all tables
-│   ├── stores.ts
-│   ├── apiKeys.ts
-│   └── files.ts
-├── migrations/
-│   ├── 0000_initial.sql
-│   └── meta/
-│       └── _journal.json
-└── index.ts              # Database connection
-```
+Migrations run **automatically on server startup** before the HTTP server starts listening. If migrations fail, the server process exits with code 1.
 
-### Running Migrations
+| Migration | Tag                     | Description                                               |
+| --------- | ----------------------- | --------------------------------------------------------- |
+| 0000      | `0000_fresh_tigra`      | Initial schema: `stores`, `api_keys`, `files` tables      |
+| 0001      | `0001_cute_betty_brant` | Adds `expires_at` column and `files_expires_at_idx` index |
 
-```bash
-# Generate migration from schema changes
-npx drizzle-kit generate
+## Connection Pool
 
-# Apply migrations
-npx drizzle-kit migrate
+PostgreSQL connection via `pg.Pool`:
 
-# Push schema directly (development)
-npx drizzle-kit push
-```
-
----
-
-## Drizzle Configuration
-
-```typescript
-// drizzle.config.ts
-import { defineConfig } from "drizzle-kit";
-
-export default defineConfig({
-  schema: "./src/db/schema/index.ts",
-  out: "./src/db/migrations",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
-});
-```
-
----
-
-## Database Connection
-
-```typescript
-// src/db/index.ts
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-import * as schema from "./schema";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-export const db = drizzle(pool, { schema });
-```
-
----
-
-## Query Examples
-
-### Get file by path
-
-```typescript
-const file = await db.query.files.findFirst({
-  where: and(eq(files.storeId, storeId), eq(files.path, path)),
-});
-```
-
-### List files in store
-
-```typescript
-const storeFiles = await db.query.files.findMany({
-  where: eq(files.storeId, storeId),
-  orderBy: files.path,
-  limit: 100,
-});
-```
-
-### Validate API key
-
-```typescript
-const key = await db.query.apiKeys.findFirst({
-  where: and(
-    eq(apiKeys.keyHash, hashKey(providedKey)),
-    isNull(apiKeys.revokedAt),
-  ),
-  with: {
-    store: true,
-  },
-});
-```
+| Setting                   | Value |
+| ------------------------- | ----- |
+| `max`                     | 10    |
+| `idleTimeoutMillis`       | 30000 |
+| `connectionTimeoutMillis` | 5000  |

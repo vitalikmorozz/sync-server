@@ -1,20 +1,42 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Project: Sync Server — a real-time file synchronization system for Obsidian vaults.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Architecture:
+    - Server: Node.js 20+ REST API + WebSocket server
+    - Client: Obsidian plugin (desktop app, Electron-based)
+    - Database: PostgreSQL 15+
+
+  Server tech stack:
+    - Runtime: Node.js 20 (Alpine Docker image)
+    - Language: TypeScript 5.x (strict mode)
+    - HTTP framework: Fastify 5.x
+    - WebSocket: Socket.IO 4.8.x (server)
+    - ORM: Drizzle ORM 0.45.x with drizzle-kit for migrations
+    - Database driver: node-postgres (pg)
+    - Validation: Zod 4.x
+    - Logging: Pino (via Fastify built-in logger)
+
+  Client tech stack:
+    - Platform: Obsidian plugin API
+    - Language: TypeScript
+    - Bundler: esbuild
+    - WebSocket: socket.io-client 4.8.x
+    - Crypto: Web Crypto API (SubtleCrypto for SHA-256)
+
+  Infrastructure:
+    - Containerization: Docker with multi-stage builds
+    - Orchestration: Docker Compose
+    - CI/CD: GitHub Actions
+    - Container registry: GitHub Container Registry (ghcr.io), private images
+    - Reverse proxy: Nginx or Caddy (external, not part of this project)
+
+  Conventions:
+    - API versioning: /api/v1/ prefix
+    - Authentication: API key via X-API-Key header (REST) or query param (WebSocket)
+    - Content hashing: SHA-256, format "sha256:{64-char hex}" (71 chars total)
+    - File content stored as text; binary files excluded from sync
+    - Soft deletes via expires_at TTL column (30-day tombstone retention)
+    - Migrations run automatically on server startup
+    - Database migrations managed by drizzle-kit, stored in src/db/migrations/
