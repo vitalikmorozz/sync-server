@@ -44,6 +44,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
           content: file.content,
           hash: file.hash,
           size: file.size,
+          isBinary: file.isBinary,
+          extension: file.extension,
           createdAt: file.createdAt.toISOString(),
           updatedAt: file.updatedAt.toISOString(),
         });
@@ -56,6 +58,10 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
         limit: listQuery.limit,
         offset: listQuery.offset,
         includeDeleted: listQuery.include_deleted,
+        extension: listQuery.extension,
+        contentContains: listQuery.content_contains,
+        pathContains: listQuery.path_contains,
+        isBinary: listQuery.is_binary,
       });
 
       return reply.send({
@@ -63,6 +69,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
           path: f.path,
           hash: f.hash,
           size: f.size,
+          isBinary: f.isBinary,
+          extension: f.extension,
           createdAt: f.createdAt.toISOString(),
           updatedAt: f.updatedAt.toISOString(),
           ...(f.expiresAt ? { expiresAt: f.expiresAt.toISOString() } : {}),
@@ -90,6 +98,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
           content: file.content,
           hash: file.hash,
           size: file.size,
+          isBinary: file.isBinary,
+          extension: file.extension,
           createdAt: file.createdAt.toISOString(),
         });
       }
@@ -98,6 +108,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
         path: file.path,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         createdAt: file.createdAt.toISOString(),
         updatedAt: file.updatedAt.toISOString(),
       });
@@ -121,6 +133,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
             content: file.content,
             hash: file.hash,
             size: file.size,
+            isBinary: file.isBinary,
+            extension: file.extension,
             createdAt: file.createdAt.toISOString(),
           });
         } else {
@@ -129,6 +143,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
             content: file.content,
             hash: file.hash,
             size: file.size,
+            isBinary: file.isBinary,
+            extension: file.extension,
             updatedAt: file.updatedAt.toISOString(),
           });
         }
@@ -138,6 +154,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
         path: file.path,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         createdAt: file.createdAt.toISOString(),
         updatedAt: file.updatedAt.toISOString(),
       });
@@ -194,6 +212,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
             content: file.content,
             hash: file.hash,
             size: file.size,
+            isBinary: file.isBinary,
+            extension: file.extension,
             createdAt: file.createdAt.toISOString(),
           });
         } else {
@@ -203,6 +223,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
             content: file.content,
             hash: file.hash,
             size: file.size,
+            isBinary: file.isBinary,
+            extension: file.extension,
             updatedAt: file.updatedAt.toISOString(),
           });
         }
@@ -212,6 +234,8 @@ export async function filesRoutes(fastify: FastifyInstance): Promise<void> {
         path: file.path,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         createdAt: file.createdAt.toISOString(),
         updatedAt: file.updatedAt.toISOString(),
       });

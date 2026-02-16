@@ -15,6 +15,8 @@ export function initializeSocket(httpServer: HttpServer): TypedServer {
       origin: process.env.CORS_ORIGINS?.split(",") || "*",
       methods: ["GET", "POST"],
     },
+    // Must match the 10MB content limit enforced by Zod validation
+    maxHttpBufferSize: 10 * 1024 * 1024, // 10MB
   });
 
   socketLogger.info("Initializing Socket.io server");

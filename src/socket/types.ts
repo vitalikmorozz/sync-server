@@ -61,6 +61,8 @@ export interface FileCreatedEvent {
   content: string;
   hash: string;
   size: number;
+  isBinary: boolean;
+  extension: string | null;
   createdAt: string; // ISO timestamp
 }
 
@@ -69,6 +71,8 @@ export interface FileModifiedEvent {
   content: string;
   hash: string;
   size: number;
+  isBinary: boolean;
+  extension: string | null;
   updatedAt: string; // ISO timestamp
 }
 
@@ -83,6 +87,8 @@ export interface FileRenamedEvent {
   content: string;
   hash: string;
   size: number;
+  isBinary: boolean;
+  extension: string | null;
   updatedAt: string; // ISO timestamp
 }
 

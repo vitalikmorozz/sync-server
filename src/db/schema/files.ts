@@ -5,6 +5,7 @@ import {
   uuid,
   integer,
   varchar,
+  boolean,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -32,6 +33,10 @@ export const files = pgTable(
     hash: varchar("hash", { length: 71 }).notNull(),
     // File size in bytes
     size: integer("size").notNull(),
+    // Whether the file is binary (images, PDFs, etc.)
+    isBinary: boolean("is_binary").notNull().default(false),
+    // File extension, lowercase, no dot (e.g., "md", "png"). Null for extensionless files.
+    extension: text("extension"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -51,6 +56,11 @@ export const files = pgTable(
     storeIdIdx: index("files_store_id_idx").on(table.storeId),
     // Index for efficient tombstone cleanup
     expiresAtIdx: index("files_expires_at_idx").on(table.expiresAt),
+    // Index for filtering by extension per store
+    extensionIdx: index("files_extension_idx").on(
+      table.storeId,
+      table.extension,
+    ),
   }),
 );
 

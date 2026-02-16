@@ -81,6 +81,15 @@ export const listFilesQuerySchema = z.object({
     .enum(["true", "false", "1", "0"])
     .default("false")
     .transform((v) => v === "true" || v === "1"),
+  extension: z.string().optional(),
+  content_contains: z.string().optional(),
+  path_contains: z.string().optional(),
+  is_binary: z
+    .enum(["true", "false", "1", "0"])
+    .optional()
+    .transform((v) =>
+      v === undefined ? undefined : v === "true" || v === "1",
+    ),
 });
 
 export type ListFilesQuery = z.infer<typeof listFilesQuerySchema>;

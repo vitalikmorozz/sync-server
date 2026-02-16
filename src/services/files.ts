@@ -1,8 +1,20 @@
 import crypto from "crypto";
-import { eq, and, like, count, asc, isNull, isNotNull, lt } from "drizzle-orm";
+import {
+  eq,
+  and,
+  like,
+  ilike,
+  count,
+  asc,
+  isNull,
+  isNotNull,
+  lt,
+  inArray,
+} from "drizzle-orm";
 import { db, files, type File } from "../db";
 import { TOMBSTONE_TTL_MS } from "../db/schema/files";
 import { ConflictError, NotFoundError } from "../errors";
+import { getFileMetadata } from "../utils/binary";
 
 // ============================================================================
 // Types
@@ -13,6 +25,8 @@ export interface FileInfo {
   path: string;
   hash: string;
   size: number;
+  isBinary: boolean;
+  extension: string | null;
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -50,6 +64,8 @@ function toFileInfo(record: File): FileInfo {
     path: record.path,
     hash: record.hash,
     size: record.size,
+    isBinary: record.isBinary,
+    extension: record.extension,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     expiresAt: record.expiresAt,
@@ -94,7 +110,7 @@ export async function listFiles(storeId: string): Promise<FileInfo[]> {
 }
 
 /**
- * List files with pagination. Optionally include soft-deleted tombstones.
+ * List files with pagination and optional filters.
  */
 export async function listFilesWithPagination(
   storeId: string,
@@ -103,14 +119,27 @@ export async function listFilesWithPagination(
     limit: number;
     offset: number;
     includeDeleted?: boolean;
+    extension?: string;
+    contentContains?: string;
+    pathContains?: string;
+    isBinary?: boolean;
   },
 ): Promise<PaginatedFiles> {
-  const { pathPrefix, limit, offset, includeDeleted = false } = options;
+  const {
+    pathPrefix,
+    limit,
+    offset,
+    includeDeleted = false,
+    extension,
+    contentContains,
+    pathContains,
+    isBinary,
+  } = options;
 
   // Fire-and-forget cleanup of expired tombstones
   cleanupExpiredFiles().catch(() => {});
 
-  // Build where condition
+  // Build where conditions
   const conditions = [eq(files.storeId, storeId)];
 
   if (pathPrefix) {
@@ -119,6 +148,35 @@ export async function listFilesWithPagination(
 
   if (!includeDeleted) {
     conditions.push(isNull(files.expiresAt));
+  }
+
+  // Extension filter: comma-separated values → IN query
+  if (extension) {
+    const extensions = extension
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e.length > 0);
+    if (extensions.length === 1) {
+      conditions.push(eq(files.extension, extensions[0]));
+    } else if (extensions.length > 1) {
+      conditions.push(inArray(files.extension, extensions));
+    }
+  }
+
+  // Content search: case-insensitive ILIKE, auto-exclude binary
+  if (contentContains) {
+    conditions.push(ilike(files.content, `%${contentContains}%`));
+    conditions.push(eq(files.isBinary, false));
+  }
+
+  // Partial path matching (case-sensitive)
+  if (pathContains) {
+    conditions.push(like(files.path, `%${pathContains}%`));
+  }
+
+  // Binary status filter
+  if (isBinary !== undefined) {
+    conditions.push(eq(files.isBinary, isBinary));
   }
 
   const whereCondition = and(...conditions);
@@ -136,6 +194,8 @@ export async function listFilesWithPagination(
       path: files.path,
       hash: files.hash,
       size: files.size,
+      isBinary: files.isBinary,
+      extension: files.extension,
       createdAt: files.createdAt,
       updatedAt: files.updatedAt,
       expiresAt: files.expiresAt,
@@ -152,6 +212,8 @@ export async function listFilesWithPagination(
       path: f.path,
       hash: f.hash,
       size: f.size,
+      isBinary: f.isBinary,
+      extension: f.extension,
       createdAt: f.createdAt,
       updatedAt: f.updatedAt,
       expiresAt: f.expiresAt,
@@ -199,6 +261,8 @@ export async function getFileWithContent(
     content: file.content,
     hash: file.hash,
     size: file.size,
+    isBinary: file.isBinary,
+    extension: file.extension,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
     expiresAt: file.expiresAt,
@@ -220,21 +284,33 @@ async function findFileIncludingTombstones(
 
 /**
  * Resurrect a tombstone: clear expiresAt, set new content.
+ * Accepts optional metadata overrides for extension/isBinary (used when the path hasn't changed).
  */
-async function resurrectFile(fileId: string, content: string): Promise<File> {
+async function resurrectFile(
+  fileId: string,
+  content: string,
+  metadata?: { extension: string | null; isBinary: boolean },
+): Promise<File> {
   const hash = computeHash(content);
   const size = Buffer.byteLength(content, "utf8");
   const now = new Date();
 
+  const setValues: Record<string, unknown> = {
+    content,
+    hash,
+    size,
+    expiresAt: null,
+    updatedAt: now,
+  };
+
+  if (metadata) {
+    setValues.extension = metadata.extension;
+    setValues.isBinary = metadata.isBinary;
+  }
+
   const [record] = await db
     .update(files)
-    .set({
-      content,
-      hash,
-      size,
-      expiresAt: null,
-      updatedAt: now,
-    })
+    .set(setValues)
     .where(eq(files.id, fileId))
     .returning();
 
@@ -250,6 +326,7 @@ export async function createFile(
   storeId: string,
   path: string,
 ): Promise<UpsertResult> {
+  const metadata = getFileMetadata(path);
   const existing = await findFileIncludingTombstones(storeId, path);
 
   if (existing) {
@@ -263,7 +340,7 @@ export async function createFile(
     }
 
     // Tombstone — resurrect with empty content
-    const record = await resurrectFile(existing.id, "");
+    const record = await resurrectFile(existing.id, "", metadata);
     return { ...toFileInfo(record), content: "", created: true };
   }
 
@@ -274,7 +351,7 @@ export async function createFile(
 
   const [record] = await db
     .insert(files)
-    .values({ storeId, path, content, hash, size })
+    .values({ storeId, path, content, hash, size, ...metadata })
     .returning();
 
   return { ...toFileInfo(record), content, created: true };
@@ -289,6 +366,7 @@ export async function createFileStrict(
   storeId: string,
   data: { path: string; content: string },
 ): Promise<FileWithContent> {
+  const metadata = getFileMetadata(data.path);
   const existing = await findFileIncludingTombstones(storeId, data.path);
 
   if (existing) {
@@ -298,7 +376,7 @@ export async function createFileStrict(
     }
 
     // Tombstone — resurrect with provided content
-    const record = await resurrectFile(existing.id, data.content);
+    const record = await resurrectFile(existing.id, data.content, metadata);
     return { ...toFileInfo(record), content: data.content };
   }
 
@@ -314,6 +392,7 @@ export async function createFileStrict(
       content: data.content,
       hash,
       size,
+      ...metadata,
     })
     .returning();
 
@@ -331,6 +410,7 @@ export async function updateFile(
   path: string,
   content: string,
 ): Promise<UpsertResult> {
+  const metadata = getFileMetadata(path);
   const hash = computeHash(content);
   const size = Buffer.byteLength(content, "utf8");
   const now = new Date();
@@ -342,7 +422,7 @@ export async function updateFile(
     if (!existing.expiresAt) {
       const [record] = await db
         .update(files)
-        .set({ content, hash, size, updatedAt: now })
+        .set({ content, hash, size, updatedAt: now, ...metadata })
         .where(eq(files.id, existing.id))
         .returning();
 
@@ -350,14 +430,14 @@ export async function updateFile(
     }
 
     // Tombstone — resurrect with provided content
-    const record = await resurrectFile(existing.id, content);
+    const record = await resurrectFile(existing.id, content, metadata);
     return { ...toFileInfo(record), content, created: true };
   }
 
   // No record — insert new
   const [record] = await db
     .insert(files)
-    .values({ storeId, path, content, hash, size })
+    .values({ storeId, path, content, hash, size, ...metadata })
     .returning();
 
   return { ...toFileInfo(record), content, created: true };
@@ -441,10 +521,12 @@ export async function renameFile(
     // Source doesn't exist (or is a tombstone) — soft-delete anything at newPath, create empty
     await softDeleteAtPath(storeId, newPath);
 
+    const newPathMetadata = getFileMetadata(newPath);
+
     // Check if there's a tombstone at newPath we can resurrect
     const tombstone = await findFileIncludingTombstones(storeId, newPath);
     if (tombstone && tombstone.expiresAt) {
-      const record = await resurrectFile(tombstone.id, "");
+      const record = await resurrectFile(tombstone.id, "", newPathMetadata);
       return { ...toFileInfo(record), content: "", created: true };
     }
 
@@ -453,7 +535,14 @@ export async function renameFile(
 
     const [record] = await db
       .insert(files)
-      .values({ storeId, path: newPath, content, hash, size: 0 })
+      .values({
+        storeId,
+        path: newPath,
+        content,
+        hash,
+        size: 0,
+        ...newPathMetadata,
+      })
       .returning();
 
     return { ...toFileInfo(record), content, created: true };
@@ -473,10 +562,11 @@ export async function renameFile(
       ),
     );
 
-  // Rename source file
+  // Rename source file (recompute extension/isBinary from new path)
+  const newMetadata = getFileMetadata(newPath);
   const result = await db
     .update(files)
-    .set({ path: newPath, updatedAt: now })
+    .set({ path: newPath, updatedAt: now, ...newMetadata })
     .where(
       and(
         eq(files.storeId, storeId),

@@ -107,6 +107,8 @@ async function handleCreatedFile(
         content: file.content,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         createdAt: file.createdAt.toISOString(),
       });
 
@@ -175,6 +177,8 @@ async function handleModifiedFile(
         content: file.content,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         createdAt: file.createdAt.toISOString(),
       });
 
@@ -190,6 +194,8 @@ async function handleModifiedFile(
         content: file.content,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         updatedAt: file.updatedAt.toISOString(),
       });
 
@@ -314,6 +320,8 @@ async function handleRenamedFile(
         content: file.content,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         createdAt: file.createdAt.toISOString(),
       });
 
@@ -330,6 +338,8 @@ async function handleRenamedFile(
         content: file.content,
         hash: file.hash,
         size: file.size,
+        isBinary: file.isBinary,
+        extension: file.extension,
         updatedAt: file.updatedAt.toISOString(),
       });
 
