@@ -153,14 +153,17 @@ These events are broadcast by the server to all clients in the store room **exce
 ```typescript
 interface FileCreatedEvent {
   path: string;
-  content: string; // Full file contents
+  content: string; // Plain text for text files, base64 for binary files
   hash: string; // "sha256:..." (71 chars)
   size: number; // Bytes
+  isBinary: boolean; // Whether the file is binary
+  extension: string | null; // File extension, lowercase, no dot
   createdAt: string; // ISO 8601 timestamp
 }
 
 socket.on("file-created", (event) => {
   // Create the file locally if it doesn't exist
+  // If isBinary is true, decode content from base64 before writing
 });
 ```
 
@@ -171,14 +174,17 @@ socket.on("file-created", (event) => {
 ```typescript
 interface FileModifiedEvent {
   path: string;
-  content: string; // Full updated contents
+  content: string; // Plain text for text files, base64 for binary files
   hash: string;
   size: number;
+  isBinary: boolean;
+  extension: string | null;
   updatedAt: string; // ISO 8601 timestamp
 }
 
 socket.on("file-modified", (event) => {
   // Update the local file, or create if missing
+  // If isBinary is true, decode content from base64 before writing
 });
 ```
 
@@ -205,14 +211,17 @@ socket.on("file-deleted", (event) => {
 interface FileRenamedEvent {
   oldPath: string;
   newPath: string;
-  content: string; // File contents at new path
+  content: string; // Content at new path
   hash: string;
   size: number;
+  isBinary: boolean; // Based on new path's extension
+  extension: string | null; // Based on new path
   updatedAt: string; // ISO 8601 timestamp
 }
 
 socket.on("file-renamed", (event) => {
   // Rename local file, or create at newPath if oldPath missing locally
+  // isBinary and extension reflect the new path
 });
 ```
 
@@ -305,13 +314,13 @@ The 200ms delay in `clearPending` ensures the vault event has time to fire befor
 | `delete`    | `deleted-file`       | Immediate                                                         |
 | `rename`    | `renamed-file`       | Both old and new paths checked for pending                        |
 
-All local handlers skip if: file is not a `TFile`, path is binary, socket is disconnected, or path is pending.
+All local handlers skip if: file is not a `TFile`, socket is disconnected, or path is pending. Binary files are no longer skipped — they are encoded to base64 before sending.
 
 ---
 
-## Binary File Exclusion
+## Binary File Inclusion
 
-Both client and server skip binary files. The client checks the file extension against a hardcoded set of 55 extensions:
+Binary files are fully synced between client and server. The client uses the same extension set (previously used for exclusion) to determine which files need base64 encoding:
 
 **Images**: png, jpg, jpeg, gif, bmp, webp, ico, svg, tiff, tif
 **Documents**: pdf, doc, docx, xls, xlsx, ppt, pptx, odt, ods, odp
@@ -321,6 +330,12 @@ Both client and server skip binary files. The client checks the file extension a
 **Executables**: exe, dll, so, dylib, bin
 **Fonts**: ttf, otf, woff, woff2, eot
 **Databases**: db, sqlite, sqlite3
+
+The client's `isBinaryFile()` function returns `true` for these extensions, indicating the file should be encoded as base64 before sending and decoded from base64 when receiving. The server determines binary status from the file extension and stores it in the `is_binary` column.
+
+### Modified-File Event Handles Binary Content
+
+The `modified-file` client-to-server event accepts base64-encoded content for binary files. The server stores the content as-is (base64 string in the `content` column) and computes the SHA-256 hash on the stored string (the base64 representation, not the raw bytes).
 
 ---
 
@@ -347,26 +362,24 @@ For each active server file (no `expiresAt`) that does not exist locally:
    GET /api/v1/files?path={urlEncodedPath}
    ```
 2. Create parent directories as needed
-3. Create the file locally
+3. Create the file locally (for binary files where `isBinary` is `true`, decode the base64 content and write as binary)
 
 ### Phase 3: Merge Divergent Files
 
 For each file that exists both locally and on the server (active):
 
-1. Read local file content
-2. Compute local SHA-256 hash
+1. Read local file content (for binary files, read as binary and encode to base64)
+2. Compute local SHA-256 hash (on stored representation: base64 for binary, plain text for text)
 3. Compare with server hash
 4. If hashes differ:
-   - Fetch server content via REST
-   - Run two-way LCS merge (see Content Merging below)
-   - Write merged result locally
-   - Upload merged result to server via `modified-file` socket event
+   - **Text files**: Fetch server content via REST, run two-way LCS merge (see Content Merging below), write merged result locally, upload merged result to server via `modified-file` socket event
+   - **Binary files**: Server-wins strategy — fetch server content via REST, decode from base64, overwrite local file (no merge attempted)
 
 ### Phase 4: Upload Local-Only Files
 
 For each local file that has no corresponding entry on the server (not even a tombstone):
 
-- Upload via `modified-file` socket event with path and content
+- Upload via `modified-file` socket event with path and content (for binary files, encode content as base64 before sending)
 
 ### Sync Summary
 
@@ -429,7 +442,7 @@ The "Force sync store state to local state" command (with confirmation modal):
    DELETE /api/v1/files/all
    X-API-Key: {apiKey}
    ```
-2. Upload every local (non-binary) file:
+2. Upload every local file (including binary files, base64-encoded):
    ```
    PUT /api/v1/files
    X-API-Key: {apiKey}

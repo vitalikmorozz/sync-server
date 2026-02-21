@@ -56,20 +56,24 @@ All file endpoints require store-level authentication (`X-API-Key` header with a
 
 ### List Files
 
-List files in the store with pagination. Optionally filter by path prefix and include soft-deleted tombstones.
+List files in the store with pagination. Optionally filter by path prefix, include soft-deleted tombstones, filter by extension, search content, match partial paths, and filter by binary status.
 
 ```
-GET /files?limit=100&offset=0&path=notes/&include_deleted=false
+GET /files?limit=100&offset=0&path=notes/&include_deleted=false&extension=md&content_contains=recipe&path_contains=daily&is_binary=false
 ```
 
 **Query Parameters:**
 
-| Param             | Type   | Default | Description                                 |
-| ----------------- | ------ | ------- | ------------------------------------------- |
-| `path`            | string | —       | Filter by path prefix (optional)            |
-| `limit`           | number | 100     | Max results (1-1000)                        |
-| `offset`          | number | 0       | Pagination offset                           |
-| `include_deleted` | string | "false" | Include tombstones ("true"/"false"/"1"/"0") |
+| Param              | Type   | Default | Description                                          |
+| ------------------ | ------ | ------- | ---------------------------------------------------- |
+| `path`             | string | —       | Filter by path prefix (optional)                     |
+| `limit`            | number | 100     | Max results (1-1000)                                 |
+| `offset`           | number | 0       | Pagination offset                                    |
+| `include_deleted`  | string | "false" | Include tombstones ("true"/"false"/"1"/"0")          |
+| `extension`        | string | —       | Filter by extension, comma-separated (optional)      |
+| `content_contains` | string | —       | Case-insensitive content substring search (optional) |
+| `path_contains`    | string | —       | Partial path matching anywhere in path (optional)    |
+| `is_binary`        | string | —       | Filter by binary status ("true"/"false") (optional)  |
 
 **Response:**
 
@@ -80,16 +84,19 @@ GET /files?limit=100&offset=0&path=notes/&include_deleted=false
       "path": "notes/daily/2024-01-15.md",
       "hash": "sha256:abc123...",
       "size": 1024,
+      "extension": "md",
+      "isBinary": false,
       "createdAt": "2024-01-15T10:00:00.000Z",
       "updatedAt": "2024-01-15T14:30:00.000Z"
     },
     {
-      "path": "notes/archived.md",
-      "hash": "sha256:e3b0c4...",
-      "size": 0,
-      "createdAt": "2024-01-10T08:00:00.000Z",
-      "updatedAt": "2024-01-14T12:00:00.000Z",
-      "expiresAt": "2024-02-13T12:00:00.000Z"
+      "path": "images/photo.png",
+      "hash": "sha256:def456...",
+      "size": 204800,
+      "extension": "png",
+      "isBinary": true,
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T14:30:00.000Z"
     }
   ],
   "total": 42,
@@ -98,7 +105,7 @@ GET /files?limit=100&offset=0&path=notes/&include_deleted=false
 }
 ```
 
-The `expiresAt` field is only present on tombstoned files (soft-deleted). Active files do not include this field.
+The `expiresAt` field is only present on tombstoned files (soft-deleted). Active files do not include this field. The `extension` field is `null` for files with no extension. The `isBinary` field indicates whether the file is binary.
 
 **Required Permission:** `read`
 
@@ -122,10 +129,14 @@ When the `path` query parameter is provided **without** `limit` or `offset`, the
   "content": "# Daily Note\n\nToday's tasks...",
   "hash": "sha256:abc123...",
   "size": 1024,
+  "extension": "md",
+  "isBinary": false,
   "createdAt": "2024-01-15T10:00:00.000Z",
   "updatedAt": "2024-01-15T14:30:00.000Z"
 }
 ```
+
+For binary files, `content` contains the base64-encoded string and `isBinary` is `true`.
 
 **Errors:**
 
@@ -159,10 +170,14 @@ POST /files
   "path": "notes/daily/2024-01-16.md",
   "hash": "sha256:def456...",
   "size": 512,
+  "extension": "md",
+  "isBinary": false,
   "createdAt": "2024-01-16T08:00:00.000Z",
   "updatedAt": "2024-01-16T08:00:00.000Z"
 }
 ```
+
+The server extracts the extension from the path and determines `is_binary` status automatically. The client does not need to send these fields.
 
 **Errors:**
 
@@ -176,7 +191,7 @@ POST /files
 
 ### Upsert File
 
-Create or update a file. If the file does not exist (or is a tombstone), creates it. If it exists, updates the content.
+Create or update a file with automatic binary metadata extraction. If the file does not exist (or is a tombstone), creates it. If it exists, updates the content. The server updates `extension` and `is_binary` on every upsert, derived from the file path.
 
 ```
 PUT /files
@@ -198,6 +213,8 @@ PUT /files
   "path": "notes/daily/2024-01-15.md",
   "hash": "sha256:ghi789...",
   "size": 768,
+  "extension": "md",
+  "isBinary": false,
   "createdAt": "2024-01-15T10:00:00.000Z",
   "updatedAt": "2024-01-16T09:00:00.000Z"
 }
@@ -247,7 +264,7 @@ DELETE /files/all
 
 ### Rename/Move File
 
-Rename or move a file to a new path.
+Rename or move a file to a new path. The server updates `extension` and `is_binary` based on the new path.
 
 ```
 PATCH /files
@@ -269,6 +286,8 @@ PATCH /files
   "path": "archive/2024/daily-2024-01-15.md",
   "hash": "sha256:abc123...",
   "size": 1024,
+  "extension": "md",
+  "isBinary": false,
   "createdAt": "2024-01-15T10:00:00.000Z",
   "updatedAt": "2024-01-16T10:00:00.000Z"
 }
