@@ -5,6 +5,7 @@ import { ApiError } from "./errors";
 import { initializeSocket, type TypedServer } from "./socket";
 
 const app = fastify({
+  bodyLimit: 10 * 1024 * 1024, // 10MB — match Zod and Socket.IO limits
   logger: {
     level: process.env.LOG_LEVEL || "info",
   },
