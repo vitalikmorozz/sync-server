@@ -74,13 +74,11 @@ Files stored in each store, with soft-delete support via `expires_at`, binary de
 
 When a file is deleted:
 
-1. `content` is set to `""` (frees storage)
-2. `hash` is set to `sha256:{hash of empty string}`
-3. `size` is set to `0`
-4. `expires_at` is set to `now() + 30 days`
-5. `updated_at` is set to `now()`
+1. `expires_at` is set to `now() + 30 days`
+2. `updated_at` is set to `now()`
+3. `content`, `hash`, and `size` are **preserved** (not cleared)
 
-The row remains in the database as a **tombstone** until `expires_at` passes.
+The row remains in the database as a **tombstone** until `expires_at` passes. Content is kept intact to allow potential recovery or resurrection with original data.
 
 ### Tombstone Resurrection
 

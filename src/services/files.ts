@@ -444,7 +444,7 @@ export async function updateFile(
 }
 
 /**
- * Soft-delete a file: set expiresAt and clear content.
+ * Soft-delete a file: set expiresAt, keep content intact for potential recovery.
  * Returns deleted=true if an active file was found and soft-deleted.
  */
 export async function deleteFile(
@@ -452,14 +452,10 @@ export async function deleteFile(
   path: string,
 ): Promise<DeleteResult> {
   const expiresAt = computeExpiresAt();
-  const emptyHash = computeHash("");
 
   const result = await db
     .update(files)
     .set({
-      content: "",
-      hash: emptyHash,
-      size: 0,
       expiresAt,
       updatedAt: new Date(),
     })
@@ -479,20 +475,16 @@ export async function deleteFile(
 }
 
 /**
- * Soft-delete all active files in a store.
+ * Soft-delete all active files in a store. Content is kept intact.
  */
 export async function deleteAllFiles(
   storeId: string,
 ): Promise<{ count: number }> {
   const expiresAt = computeExpiresAt();
-  const emptyHash = computeHash("");
 
   const result = await db
     .update(files)
     .set({
-      content: "",
-      hash: emptyHash,
-      size: 0,
       expiresAt,
       updatedAt: new Date(),
     })
@@ -589,17 +581,14 @@ export async function renameFile(
 
 /**
  * Soft-delete any active file at the given path (used internally by rename).
+ * Content is kept intact.
  */
 async function softDeleteAtPath(storeId: string, path: string): Promise<void> {
   const expiresAt = computeExpiresAt();
-  const emptyHash = computeHash("");
 
   await db
     .update(files)
     .set({
-      content: "",
-      hash: emptyHash,
-      size: 0,
       expiresAt,
       updatedAt: new Date(),
     })
