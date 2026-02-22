@@ -12,7 +12,12 @@ import { stores } from "./stores";
 /**
  * Permission types for API keys
  */
-export const permissionEnum = pgEnum("permission", ["read", "write"]);
+export const permissionEnum = pgEnum("permission", [
+  "read",
+  "write",
+  "settings_read",
+  "settings_write",
+]);
 
 /**
  * API keys for authenticating client requests.
@@ -46,4 +51,4 @@ export const apiKeys = pgTable(
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
-export type Permission = "read" | "write";
+export type Permission = "read" | "write" | "settings_read" | "settings_write";

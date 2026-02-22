@@ -17,7 +17,12 @@ export type CreateStoreInput = z.infer<typeof createStoreSchema>;
 // API Key Schemas
 // ============================================================================
 
-export const permissionSchema = z.enum(["read", "write"]);
+export const permissionSchema = z.enum([
+  "read",
+  "write",
+  "settings_read",
+  "settings_write",
+]);
 
 export const createApiKeySchema = z.object({
   name: z
@@ -103,6 +108,27 @@ export const filePathQuerySchema = z.object({
 });
 
 export type FilePathQuery = z.infer<typeof filePathQuerySchema>;
+
+// ============================================================================
+// Settings Schemas
+// ============================================================================
+
+export const settingUpsertSchema = z.object({
+  path: filePathSchema,
+  content: z.string().max(10 * 1024 * 1024, "Content must be 10MB or less"),
+});
+
+export type SettingUpsertInput = z.infer<typeof settingUpsertSchema>;
+
+/**
+ * Query schema for endpoints that require a setting path
+ * Used by GET (single), DELETE /settings
+ */
+export const settingPathQuerySchema = z.object({
+  path: filePathSchema,
+});
+
+export type SettingPathQuery = z.infer<typeof settingPathQuerySchema>;
 
 // ============================================================================
 // Validation Helper

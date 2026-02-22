@@ -8,17 +8,19 @@ import {
   type Permission,
 } from "./apiKeys";
 import { files, type File, type NewFile } from "./files";
+import { settings, type Setting, type NewSetting } from "./settings";
 
 // ============================================================================
 // Relations
 // ============================================================================
 
 /**
- * Store relations - a store has many API keys and files
+ * Store relations - a store has many API keys, files, and settings
  */
 export const storesRelations = relations(stores, ({ many }) => ({
   apiKeys: many(apiKeys),
   files: many(files),
+  settings: many(settings),
 }));
 
 /**
@@ -41,12 +43,32 @@ export const filesRelations = relations(files, ({ one }) => ({
   }),
 }));
 
+/**
+ * Setting relations - a setting belongs to one store
+ */
+export const settingsRelations = relations(settings, ({ one }) => ({
+  store: one(stores, {
+    fields: [settings.storeId],
+    references: [stores.id],
+  }),
+}));
+
 // ============================================================================
 // Exports
 // ============================================================================
 
 // Tables
-export { stores, apiKeys, files, permissionEnum };
+export { stores, apiKeys, files, settings, permissionEnum };
 
 // Types
-export type { Store, NewStore, ApiKey, NewApiKey, Permission, File, NewFile };
+export type {
+  Store,
+  NewStore,
+  ApiKey,
+  NewApiKey,
+  Permission,
+  File,
+  NewFile,
+  Setting,
+  NewSetting,
+};

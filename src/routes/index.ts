@@ -3,6 +3,7 @@ import { storesRoutes } from "./admin/stores";
 import { apiKeysRoutes } from "./admin/apiKeys";
 import { healthRoutes } from "./health";
 import { filesRoutes } from "./files";
+import { settingsRoutes } from "./settings";
 
 /**
  * Register all application routes
@@ -13,6 +14,7 @@ export async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // Public API routes (store-level auth)
   await fastify.register(filesRoutes, { prefix: "/api/v1/files" });
+  await fastify.register(settingsRoutes, { prefix: "/api/v1/settings" });
 
   // Admin routes
   await fastify.register(storesRoutes, { prefix: "/api/v1/admin/stores" });
