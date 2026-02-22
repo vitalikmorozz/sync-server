@@ -44,8 +44,8 @@ export type CreateApiKeyInput = z.infer<typeof createApiKeySchema>;
 // File Schemas
 // ============================================================================
 
-// Path validation: no special characters that could cause issues
-const pathRegex = /^[^<>:"|?*\x00-\x1f]+$/;
+// Path validation: forbid characters unsafe for filesystems (Windows-illegal + backslash)
+const pathRegex = /^[^<>:"\\|?*\x00-\x1f]+$/;
 
 export const filePathSchema = z
   .string()

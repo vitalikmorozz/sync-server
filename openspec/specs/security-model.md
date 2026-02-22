@@ -265,7 +265,7 @@ export const createFileSchema = z.object({
     .string()
     .min(1, "Path is required")
     .max(1000, "Path too long")
-    .regex(/^[^<>:"|?*\x00-\x1f]+$/, "Invalid path characters"),
+    .regex(/^[^<>:"\\|?*\x00-\x1f]+$/, "Invalid path characters"),
   content: z.string().max(10 * 1024 * 1024, "Content too large (max 10MB)"),
 });
 

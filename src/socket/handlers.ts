@@ -22,7 +22,7 @@ const pathSchema = z
   .string()
   .min(1, "Path is required")
   .max(1000, "Path too long")
-  .regex(/^[^<>:"|?*\x00-\x1f]+$/, "Invalid path characters");
+  .regex(/^[^<>:"\\|?*\x00-\x1f]+$/, "Invalid path characters");
 
 const contentSchema = z
   .string()

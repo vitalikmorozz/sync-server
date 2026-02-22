@@ -280,11 +280,11 @@ Client C  <───────────────────────
 
 All payloads are validated server-side using Zod schemas before processing:
 
-| Field                | Constraints                                                    |
-| -------------------- | -------------------------------------------------------------- |
-| `path`               | 1-1000 chars, regex: no `< > : " \| ? *` or control characters |
-| `content`            | Max 10MB string                                                |
-| `oldPath`, `newPath` | Same constraints as `path`                                     |
+| Field                | Constraints                                                       |
+| -------------------- | ----------------------------------------------------------------- |
+| `path`               | 1-1000 chars, regex: no `< > : " \\ \| ? *` or control characters |
+| `content`            | Max 10MB string                                                   |
+| `oldPath`, `newPath` | Same constraints as `path`                                        |
 
 Invalid payloads receive a `VALIDATION_ERROR` acknowledgment and are not processed.
 
