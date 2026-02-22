@@ -2,7 +2,7 @@
 
 ## Overview
 
-PostgreSQL 15+ with Drizzle ORM. Three tables, one custom enum type, and automatic migrations on server startup.
+PostgreSQL 15+ with Drizzle ORM. Four tables, one custom enum type, and automatic migrations on server startup.
 
 ## Tables
 
@@ -17,7 +17,7 @@ Isolated file namespaces, each mapping to one Obsidian vault.
 | `created_at` | `timestamp with tz` | NOT NULL | `now()`             | Creation time       |
 | `updated_at` | `timestamp with tz` | NOT NULL | `now()`             | Last modification   |
 
-**Relations**: Has many `api_keys`, has many `files`. Deleting a store cascades to all its keys and files.
+**Relations**: Has many `api_keys`, has many `files`, has many `settings`. Deleting a store cascades to all its keys, files, and settings.
 
 ### api_keys
 
@@ -30,7 +30,7 @@ Authentication keys scoped to a single store.
 | `name`         | `text`              | NOT NULL | —                   | Human-readable key name        |
 | `key_hash`     | `varchar(64)`       | NOT NULL | —                   | SHA-256 hex hash of full key   |
 | `key_prefix`   | `varchar(20)`       | NOT NULL | —                   | First 16 chars for display     |
-| `permissions`  | `permission[]`      | NOT NULL | —                   | Array of `'read'` / `'write'`  |
+| `permissions`  | `permission[]`      | NOT NULL | —                   | Array of permission values     |
 | `created_at`   | `timestamp with tz` | NOT NULL | `now()`             | Creation time                  |
 | `last_used_at` | `timestamp with tz` | NULL     | —                   | Updated on each authentication |
 | `revoked_at`   | `timestamp with tz` | NULL     | —                   | Non-null = key is revoked      |
@@ -40,7 +40,7 @@ Authentication keys scoped to a single store.
 The `permission` enum is defined as:
 
 ```sql
-CREATE TYPE "public"."permission" AS ENUM('read', 'write');
+CREATE TYPE "public"."permission" AS ENUM('read', 'write', 'settings_read', 'settings_write');
 ```
 
 ### files
@@ -69,6 +69,34 @@ Files stored in each store, with soft-delete support via `expires_at`, binary de
 | `files_store_id_idx`          | `(store_id)`            | btree        | List files in a store         |
 | `files_expires_at_idx`        | `(expires_at)`          | btree        | Efficient tombstone cleanup   |
 | `files_extension_idx`         | `(store_id, extension)` | btree        | Filter by extension per store |
+
+### settings
+
+Vault settings files stored per store, with soft-delete support via `expires_at`. Structurally mirrors the `files` table but stores `.obsidian/` configuration files separately.
+
+| Column       | Type                | Nullable | Default             | Description                       |
+| ------------ | ------------------- | -------- | ------------------- | --------------------------------- |
+| `id`         | `uuid`              | NOT NULL | `gen_random_uuid()` | Primary key                       |
+| `store_id`   | `uuid`              | NOT NULL | —                   | FK -> `stores.id` (CASCADE)       |
+| `path`       | `text`              | NOT NULL | —                   | Relative path within `.obsidian/` |
+| `content`    | `text`              | NOT NULL | —                   | File contents (text)              |
+| `hash`       | `varchar(71)`       | NOT NULL | —                   | `sha256:{64-char hex}` (71 chars) |
+| `size`       | `integer`           | NOT NULL | —                   | Size in bytes                     |
+| `is_binary`  | `boolean`           | NOT NULL | `false`             | Whether the file is binary        |
+| `extension`  | `text`              | NULL     | —                   | File extension, lowercase, no dot |
+| `created_at` | `timestamp with tz` | NOT NULL | `now()`             | Creation time                     |
+| `updated_at` | `timestamp with tz` | NOT NULL | `now()`             | Last modification time            |
+| `expires_at` | `timestamp with tz` | NULL     | —                   | Tombstone expiry (null = active)  |
+
+**Indexes**:
+
+| Index Name                       | Columns            | Type         | Purpose                              |
+| -------------------------------- | ------------------ | ------------ | ------------------------------------ |
+| `settings_store_path_unique_idx` | `(store_id, path)` | UNIQUE btree | One settings file per path per store |
+| `settings_store_id_idx`          | `(store_id)`       | btree        | List settings in a store             |
+| `settings_expires_at_idx`        | `(expires_at)`     | btree        | Efficient tombstone cleanup          |
+
+**Relations**: Belongs to `stores` (many-to-one, cascade delete).
 
 ## Soft Delete Mechanics
 
@@ -99,11 +127,12 @@ Managed by Drizzle Kit. Migration files are stored in `src/db/migrations/` and c
 
 Migrations run **automatically on server startup** before the HTTP server starts listening. If migrations fail, the server process exits with code 1.
 
-| Migration | Tag                     | Description                                                                      |
-| --------- | ----------------------- | -------------------------------------------------------------------------------- |
-| 0000      | `0000_fresh_tigra`      | Initial schema: `stores`, `api_keys`, `files` tables                             |
-| 0001      | `0001_cute_betty_brant` | Adds `expires_at` column and `files_expires_at_idx` index                        |
-| 0002      | `0002_early_drax`       | Adds `is_binary`, `extension` columns, `files_extension_idx` index, and backfill |
+| Migration | Tag                        | Description                                                                                      |
+| --------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| 0000      | `0000_fresh_tigra`         | Initial schema: `stores`, `api_keys`, `files` tables                                             |
+| 0001      | `0001_cute_betty_brant`    | Adds `expires_at` column and `files_expires_at_idx` index                                        |
+| 0002      | `0002_early_drax`          | Adds `is_binary`, `extension` columns, `files_extension_idx` index, and backfill                 |
+| 0003      | `0003_petite_silver_sable` | Adds `settings_read`, `settings_write` to permission enum; creates `settings` table with indexes |
 
 ## Connection Pool
 

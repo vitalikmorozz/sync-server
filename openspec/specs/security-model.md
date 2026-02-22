@@ -42,18 +42,23 @@ function generateApiKey(storeId: string): { key: string; hash: string } {
 
 ### Permission Types
 
-| Permission | Description      | Allows                                       |
-| ---------- | ---------------- | -------------------------------------------- |
-| `read`     | Read-only access | List files, get file content, receive events |
-| `write`    | Write access     | Create, update, delete, rename files         |
+| Permission       | Description               | Allows                                       |
+| ---------------- | ------------------------- | -------------------------------------------- |
+| `read`           | Read-only file access     | List files, get file content, receive events |
+| `write`          | Write file access         | Create, update, delete, rename files         |
+| `settings_read`  | Read-only settings access | List settings, get setting content           |
+| `settings_write` | Write settings access     | Create, update, delete settings              |
 
 ### Permission Combinations
 
-| Permissions         | Use Case                                    |
-| ------------------- | ------------------------------------------- |
-| `["read"]`          | Read-only client, backup systems            |
-| `["write"]`         | Write-only ingestion (unusual)              |
-| `["read", "write"]` | Full access client (typical Obsidian usage) |
+| Permissions                                            | Use Case                                    |
+| ------------------------------------------------------ | ------------------------------------------- |
+| `["read"]`                                             | Read-only client, backup systems            |
+| `["write"]`                                            | Write-only ingestion (unusual)              |
+| `["read", "write"]`                                    | File sync only (no settings)                |
+| `["read", "write", "settings_read", "settings_write"]` | Full access client (typical Obsidian usage) |
+| `["settings_read"]`                                    | Settings backup / audit only                |
+| `["settings_read", "settings_write"]`                  | Settings sync only (no file sync)           |
 
 ### Admin Keys
 
@@ -165,7 +170,7 @@ export async function authMiddleware(
 
 ```typescript
 // src/middleware/permissions.ts
-export function requirePermission(permission: "read" | "write") {
+export function requirePermission(permission: Permission) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.auth.permissions.includes(permission)) {
       throw new ForbiddenError(`${permission} permission required`);
@@ -177,6 +182,11 @@ export function requirePermission(permission: "read" | "write") {
 app.get("/files", {
   preHandler: [authMiddleware, requirePermission("read")],
   handler: listFilesHandler,
+});
+
+app.get("/settings", {
+  preHandler: [authMiddleware, requirePermission("settings_read")],
+  handler: listSettingsHandler,
 });
 ```
 

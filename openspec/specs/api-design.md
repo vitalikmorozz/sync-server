@@ -299,6 +299,152 @@ PATCH /files
 
 ---
 
+## Settings Endpoints
+
+All settings endpoints require store-level authentication (`X-API-Key` header with a store-scoped key). Settings are stored separately from files and use dedicated `settings_read` / `settings_write` permissions.
+
+### List Settings
+
+List all active settings files in the store. Returns metadata without content.
+
+```
+GET /settings
+```
+
+**Response:**
+
+```json
+{
+  "settings": [
+    {
+      "path": "app.json",
+      "hash": "sha256:abc123...",
+      "size": 1024,
+      "extension": "json",
+      "isBinary": false,
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T14:30:00.000Z"
+    },
+    {
+      "path": "plugins/obsidian-excalidraw-plugin/data.json",
+      "hash": "sha256:def456...",
+      "size": 2048,
+      "extension": "json",
+      "isBinary": false,
+      "createdAt": "2024-01-15T10:00:00.000Z",
+      "updatedAt": "2024-01-15T14:30:00.000Z"
+    }
+  ],
+  "total": 42
+}
+```
+
+Expired tombstones SHALL be cleaned up lazily when this endpoint is called (fire-and-forget, does not block the response).
+
+**Required Permission:** `settings_read`
+
+---
+
+### Get Setting
+
+Retrieve a specific settings file's content and metadata using its path as a query parameter.
+
+```
+GET /settings?path=app.json
+```
+
+**Response:**
+
+```json
+{
+  "path": "app.json",
+  "content": "{\"vimMode\": true, ...}",
+  "hash": "sha256:abc123...",
+  "size": 1024,
+  "extension": "json",
+  "isBinary": false,
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-15T14:30:00.000Z"
+}
+```
+
+**Errors:**
+
+- `404 Not Found` if the setting does not exist or is tombstoned
+
+**Required Permission:** `settings_read`
+
+---
+
+### Upsert Setting
+
+Create or update a settings file. If the file does not exist (or is a tombstone), creates it. If it exists, updates the content. The server SHALL compute the hash, size, extension, and is_binary from the path and content.
+
+```
+PUT /settings
+```
+
+**Request Body:**
+
+```json
+{
+  "path": "app.json",
+  "content": "{\"vimMode\": true, ...}"
+}
+```
+
+**Response:**
+
+```json
+{
+  "path": "app.json",
+  "hash": "sha256:abc123...",
+  "size": 1024,
+  "extension": "json",
+  "isBinary": false,
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "updatedAt": "2024-01-16T09:00:00.000Z"
+}
+```
+
+**Required Permission:** `settings_write`
+
+---
+
+### Delete Setting
+
+Soft-delete a single settings file by setting a 30-day tombstone. Content is preserved.
+
+```
+DELETE /settings?path=app.json
+```
+
+**Response:** `204 No Content`
+
+**Required Permission:** `settings_write`
+
+---
+
+### Delete All Settings
+
+Soft-delete all active settings files in the store. Used by the client's push operation to clear server settings before re-uploading.
+
+```
+DELETE /settings/all
+```
+
+**Response:**
+
+```json
+{
+  "deleted": 42
+}
+```
+
+**Required Permission:** `settings_write`
+
+---
+
 ## Admin Endpoints
 
 Admin endpoints require the master API key (`ADMIN_API_KEY` env var) with the `sk_admin_` prefix.
